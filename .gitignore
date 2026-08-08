@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+*.spec
+
+# 사용자별 설정 (창 위치, 크기, 마지막 이미지 경로)
+config.json
+
+# 테스트용 이미지는 커밋하지 않는다 (대개 타인의 저작물)
+*.gif
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
+!docs/*.png
