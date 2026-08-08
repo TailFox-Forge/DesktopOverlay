@@ -12,15 +12,15 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.2.2** 입니다.
+현재 최신 릴리스는 **v0.2.3** 입니다.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.2.2/Desktop_Overlay_Start.exe)
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.2.3/Desktop_Overlay_Start.exe)
 
 ```text
-SHA256: 82b407070289b45dfe6d419afd3f83e545bf9ef4a6bf2ca0c51b3c7862387080
+SHA256: f8ababc3d0c84b8bd32f581af1066a180f0344bb2bfdbeb4c8574448eb1d0703
 ```
 
-v0.2.2에서는 대형 GIF 프레임 제한 정책, GIF 회귀 테스트, 전역 단축키 설정창을 추가했습니다.
+v0.2.3에서는 단축키 설정창 크기와 입력 처리를 보강했습니다. 조합키 입력, 이미 등록된 단축키 재배정, 넘버패드 숫자 단독 등록이 정상 동작합니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
