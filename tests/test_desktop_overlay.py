@@ -273,6 +273,74 @@ def test_hotkey_capture_waits_for_modifier_combo(qapp, overlay_module):
         button.deleteLater()
 
 
+@pytest.mark.parametrize("size", [(320, 293), (640, 480), (1280, 720)])
+def test_first_scale_keeps_saved_custom_position(qapp, overlay_module, size):
+    mod = overlay_module
+    cfg = dict(mod.DEFAULTS)
+    cfg.update({"path": "", "x": 500, "y": 300, "anchor": None})
+    pet = mod.Pet(cfg)
+
+    try:
+        assert not pet._sized_once
+        pet.base_size = size
+        pet.cfg["scale"] = 1.0
+        pet.cfg["size"] = None
+        pet.apply_scale()
+
+        assert (pet.x(), pet.y()) == (500, 300)
+        assert (pet.width(), pet.height()) == size
+        assert pet._sized_once
+    finally:
+        pet.close()
+
+
+def test_first_scale_keeps_anchor_reposition_behavior(qapp, overlay_module):
+    mod = overlay_module
+    screen = qapp.primaryScreen()
+    cfg = dict(mod.DEFAULTS)
+    cfg.update({
+        "path": "",
+        "x": 500,
+        "y": 300,
+        "anchor": {"screen": screen.name(), "hx": 2, "vy": 2},
+    })
+    pet = mod.Pet(cfg)
+
+    try:
+        pet.base_size = (320, 293)
+        pet.cfg["scale"] = 1.0
+        pet.cfg["size"] = None
+        pet.apply_scale()
+
+        geo = screen.availableGeometry()
+        expected_x = geo.right() - pet.width() + 1 - int(pet.cfg.get("snap_margin", 0))
+        expected_y = geo.bottom() - pet.height() + 1 - int(pet.cfg.get("snap_margin", 0))
+        assert (pet.x(), pet.y()) == (expected_x, expected_y)
+    finally:
+        pet.close()
+
+
+def test_scale_after_first_size_preserves_center(qapp, overlay_module):
+    mod = overlay_module
+    cfg = dict(mod.DEFAULTS)
+    cfg.update({"path": "", "x": 500, "y": 300, "anchor": None})
+    pet = mod.Pet(cfg)
+
+    try:
+        pet.base_size = (320, 293)
+        pet.cfg["scale"] = 1.0
+        pet.apply_scale()
+        center_before = (pet.x() + pet.width() / 2.0, pet.y() + pet.height() / 2.0)
+
+        pet.set_scale(2.0)
+
+        center_after = (pet.x() + pet.width() / 2.0, pet.y() + pet.height() / 2.0)
+        assert abs(center_after[0] - center_before[0]) <= 0.5
+        assert abs(center_after[1] - center_before[1]) <= 0.5
+    finally:
+        pet.close()
+
+
 def test_anchor_margin_and_click_behavior(qapp, overlay_module):
     mod = overlay_module
     cfg = dict(mod.DEFAULTS)

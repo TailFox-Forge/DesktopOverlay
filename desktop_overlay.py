@@ -1181,6 +1181,7 @@ class Pet(QtWidgets.QWidget):
         self.need_image = None   # None / "first" / "missing"
         self.missing_image_path = None
         self.ready = False       # 초기화 중에는 위치 보정을 하지 않는다
+        self._sized_once = False # 첫 렌더 크기 확정 전에는 640x480 기본 창 중심을 보존하면 안 된다
 
         self.setWindowTitle(APP_NAME)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
@@ -1481,7 +1482,7 @@ class Pet(QtWidgets.QWidget):
         # QRect.center() 는 정수로 내림해서 크기를 바꿀 때마다 1px 씩 밀린다.
         # 실수로 중심을 잡아야 반복해서 조절해도 제자리에 머문다.
         old_center = None
-        if self.ready:
+        if self.ready and self._sized_once:
             old_center = (self.x() + self.width() / 2.0, self.y() + self.height() / 2.0)
         size = self.cfg.get("size")
         if size:
@@ -1492,6 +1493,7 @@ class Pet(QtWidgets.QWidget):
         self.resize(max(MIN_SIZE, w), max(MIN_SIZE, h))
         if self.ready:
             self.restore_position(old_center)
+        self._sized_once = True
         self.update()
 
     def set_pixel_size(self, w, h):
