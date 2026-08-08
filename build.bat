@@ -3,7 +3,7 @@ rem 파이썬 없이도 실행되는 단일 exe 를 만든다.
 rem 결과물: dist\Desktop_Overlay_Start.exe
 cd /d "%~dp0"
 
-python -m pip install --upgrade pyinstaller
+python -m pip install -r requirements.txt -r requirements-build.txt
 if errorlevel 1 goto FAIL
 
 python -m PyInstaller --noconfirm --onefile --windowed ^

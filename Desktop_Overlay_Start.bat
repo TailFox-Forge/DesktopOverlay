@@ -11,7 +11,11 @@ if errorlevel 1 goto NOPYTHON
 pythonw -c "import PyQt5, PIL, numpy" >nul 2>&1
 if errorlevel 1 goto NOLIBS
 
-start "" pythonw "%~dp0desktop_overlay.py" %1
+if "%~1"=="" (
+  start "" pythonw "%~dp0desktop_overlay.py"
+) else (
+  start "" pythonw "%~dp0desktop_overlay.py" "%~1"
+)
 exit /b 0
 
 :NOPYTHON
@@ -43,5 +47,9 @@ if errorlevel 1 (
 )
 echo.
 echo   설치가 끝났습니다. 프로그램을 시작합니다.
-start "" pythonw "%~dp0desktop_overlay.py" %1
+if "%~1"=="" (
+  start "" pythonw "%~dp0desktop_overlay.py"
+) else (
+  start "" pythonw "%~dp0desktop_overlay.py" "%~1"
+)
 exit /b 0

@@ -29,10 +29,16 @@ if getattr(sys, "frozen", False):
     APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(APP_DIR, "config.json")
+PORTABLE_CONFIG_PATH = os.path.join(APP_DIR, "config.json")
+LOCAL_CONFIG_ROOT = (os.environ.get("LOCALAPPDATA")
+                     or os.path.join(os.path.expanduser("~"), ".config"))
+LOCAL_CONFIG_PATH = os.path.join(LOCAL_CONFIG_ROOT, APP_NAME, "config.json")
+CONFIG_PATH = PORTABLE_CONFIG_PATH
+CONFIG_NOTICES = []
 IMAGE_FILTER = "이미지 (*.gif *.png *.jpg *.jpeg *.webp *.bmp);;모든 파일 (*.*)"
 MIN_SIZE = 48      # 이보다 작아지면 우클릭 메뉴조차 열기 어려워진다
 MAX_SIZE = 4000
+PROCESSING_TOOLTIP = "%s - 이미지 처리 중..." % APP_NAME
 
 DEFAULTS = {
     "path": "",
@@ -76,26 +82,70 @@ def normalize_anchor(value):
     return {"screen": screen, "hx": hx, "vy": vy}
 
 
+def add_config_notice(message):
+    if message not in CONFIG_NOTICES:
+        CONFIG_NOTICES.append(message)
+
+
+def consume_config_notices():
+    notices = list(CONFIG_NOTICES)
+    CONFIG_NOTICES[:] = []
+    return notices
+
+
+def initial_config_path():
+    if os.path.exists(PORTABLE_CONFIG_PATH):
+        return PORTABLE_CONFIG_PATH
+    if os.path.exists(LOCAL_CONFIG_PATH):
+        return LOCAL_CONFIG_PATH
+    return PORTABLE_CONFIG_PATH
+
+
 def load_config():
+    global CONFIG_PATH
     cfg = dict(DEFAULTS)
+    CONFIG_PATH = initial_config_path()
     try:
         # utf-8-sig: 메모장이나 PowerShell 이 붙인 BOM 이 있어도 읽는다
         with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
         if isinstance(data, dict):
             cfg.update(data)
+        else:
+            add_config_notice("설정 파일 형식이 올바르지 않아 기본값으로 시작했습니다.\n%s" % CONFIG_PATH)
     except Exception:
-        pass
+        if os.path.exists(CONFIG_PATH):
+            add_config_notice("설정을 읽지 못해 기본값으로 시작했습니다.\n%s" % CONFIG_PATH)
     cfg["anchor"] = normalize_anchor(cfg.get("anchor"))
     return cfg
 
 
 def save_config(cfg):
-    try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    global CONFIG_PATH
+    def write(path):
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+
+    try:
+        write(CONFIG_PATH)
+    except Exception as primary_error:
+        if CONFIG_PATH != LOCAL_CONFIG_PATH:
+            try:
+                write(LOCAL_CONFIG_PATH)
+                CONFIG_PATH = LOCAL_CONFIG_PATH
+                add_config_notice(
+                    "실행 파일 폴더에 설정을 저장하지 못해 사용자 설정 폴더로 전환했습니다.\n%s"
+                    % LOCAL_CONFIG_PATH)
+                return
+            except Exception as fallback_error:
+                add_config_notice(
+                    "설정을 저장하지 못했습니다.\n%s\n%s"
+                    % (primary_error, fallback_error))
+        else:
+            add_config_notice("설정을 저장하지 못했습니다.\n%s" % primary_error)
 
 
 # ---------------------------------------------------------------- 이미지 처리
@@ -166,44 +216,27 @@ def edge_strength(rgb):
 def outside_region(passable):
     """이미지 가장자리에서 passable 을 따라 이어진 영역만 True.
     캐릭터 외곽선은 passable 이 아니므로 채우기가 안쪽으로 못 들어간다.
-    스캔라인 방식 flood fill - 한 줄씩 통째로 처리해서 파이썬 반복을 줄인다."""
+    행/열 단위 전파로 연결 영역을 찾는다. 픽셀별 파이썬 루프보다 큰 GIF에서 훨씬 빠르다."""
     h, w = passable.shape
     filled = np.zeros((h, w), dtype=bool)
+    filled[0, :] = passable[0, :]
+    filled[-1, :] |= passable[-1, :]
+    filled[:, 0] |= passable[:, 0]
+    filled[:, -1] |= passable[:, -1]
 
-    stack = []
-    for x in range(w):
-        if passable[0, x]:
-            stack.append((0, x))
-        if passable[h - 1, x]:
-            stack.append((h - 1, x))
-    for y in range(h):
-        if passable[y, 0]:
-            stack.append((y, 0))
-        if passable[y, w - 1]:
-            stack.append((y, w - 1))
-
-    row_pass = passable
-    while stack:
-        y, x = stack.pop()
-        if filled[y, x] or not row_pass[y, x]:
-            continue
-        # 이 줄에서 좌우로 갈 수 있는 데까지 넓힌다
-        left = x
-        while left > 0 and row_pass[y, left - 1] and not filled[y, left - 1]:
-            left -= 1
-        right = x
-        while right < w - 1 and row_pass[y, right + 1] and not filled[y, right + 1]:
-            right += 1
-        filled[y, left:right + 1] = True
-
-        # 위아래 줄에서 새로 열린 구간의 시작점만 스택에 넣는다
-        for ny in (y - 1, y + 1):
-            if 0 <= ny < h:
-                seg = row_pass[ny, left:right + 1] & ~filled[ny, left:right + 1]
-                if seg.any():
-                    starts = np.flatnonzero(seg & ~np.concatenate(([False], seg[:-1])))
-                    for s in starts:
-                        stack.append((ny, left + int(s)))
+    while True:
+        old = filled.copy()
+        for _ in range(2):
+            for x in range(1, w):
+                filled[:, x] |= filled[:, x - 1] & passable[:, x]
+            for x in range(w - 2, -1, -1):
+                filled[:, x] |= filled[:, x + 1] & passable[:, x]
+            for y in range(1, h):
+                filled[y, :] |= filled[y - 1, :] & passable[y, :]
+            for y in range(h - 2, -1, -1):
+                filled[y, :] |= filled[y + 1, :] & passable[y, :]
+        if np.array_equal(old, filled):
+            break
     return filled
 
 
@@ -271,6 +304,47 @@ def to_qpixmap(rgba):
     buf = np.ascontiguousarray(rgba)
     img = QtGui.QImage(buf.data, w, h, w * 4, QtGui.QImage.Format_RGBA8888).copy()
     return QtGui.QPixmap.fromImage(img)
+
+
+def render_frame_arrays(frames, cfg, bg_color=None):
+    if not cfg.get("remove_bg"):
+        return [(f, d) for f, d in frames]
+    bg = np.array(bg_color if bg_color is not None else cfg["bg_color"], dtype=np.float32)
+    return [
+        (key_out(f, bg, cfg["tolerance"], cfg["softness"],
+                 cfg["despill"], cfg["edge_only"], cfg["edge_thresh"], cfg["holes"]), d)
+        for f, d in frames
+    ]
+
+
+class ImageProcessWorker(QtCore.QObject):
+    finished = QtCore.pyqtSignal(int, object)
+    failed = QtCore.pyqtSignal(int, str, str)
+
+    def __init__(self, job_id, cfg, path=None, frames=None, detect_bg=False):
+        super().__init__()
+        self.job_id = job_id
+        self.cfg = dict(cfg)
+        self.path = path
+        self.frames = frames
+        self.detect_bg = detect_bg
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        try:
+            frames = self.frames if self.frames is not None else read_frames(self.path)
+            bg_color = self.cfg.get("bg_color")
+            if self.detect_bg and frames:
+                bg_color = detect_bg_color(frames[0][0]).tolist()
+            rendered = render_frame_arrays(frames, self.cfg, bg_color)
+            self.finished.emit(self.job_id, {
+                "path": self.path,
+                "frames": frames,
+                "rendered": rendered,
+                "bg_color": bg_color,
+            })
+        except Exception as e:
+            self.failed.emit(self.job_id, self.path or "", str(e))
 
 
 # ---------------------------------------------------------------- 오버레이 창
@@ -344,9 +418,15 @@ class Pet(QtWidgets.QWidget):
         self.index = 0
         self.base_size = (200, 200)
         self._drag = None
+        self._drag_start_global = None
+        self._drag_start_window = None
+        self._drag_moved = False
+        self._job_id = 0
+        self._workers = []
         self.tray = None
         self.hidden = False      # 숨김 상태는 저장하지 않는다. 다음 실행 때는 항상 보인다
         self.need_image = None   # None / "first" / "missing"
+        self.missing_image_path = None
         self.ready = False       # 초기화 중에는 위치 보정을 하지 않는다
 
         self.setWindowTitle(APP_NAME)
@@ -357,13 +437,23 @@ class Pet(QtWidgets.QWidget):
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.next_frame)
 
+        startup_missing_path = cfg.pop("_startup_missing_path", None)
+        if startup_missing_path:
+            self.need_image = "missing"
+            self.missing_image_path = startup_missing_path
+
         self.move(cfg["x"], cfg["y"])
         # 이미지가 없으면 파일 대화상자를 곧바로 띄우지 않는다.
         # 트레이 아이콘이 준비된 뒤 알림으로 안내한다 (main 에서 prompt_if_no_image 호출).
-        if not cfg["path"]:
+        if startup_missing_path and cfg["path"] and os.path.exists(cfg["path"]):
+            self.load_image(cfg["path"])
+        elif startup_missing_path:
+            pass
+        elif not cfg["path"]:
             self.need_image = "first"
         elif not os.path.exists(cfg["path"]):
             self.need_image = "missing"
+            self.missing_image_path = cfg["path"]
         else:
             self.load_image(cfg["path"])
 
@@ -429,9 +519,15 @@ class Pet(QtWidgets.QWidget):
             title = "이미지를 찾을 수 없습니다"
             body = ("전에 쓰던 파일이 옮겨졌거나 삭제되었습니다.\n%s\n"
                     "트레이 아이콘을 클릭해 [이미지 열기] 로 다시 선택하세요."
-                    % os.path.basename(self.cfg["path"]))
+                    % (self.missing_image_path or self.cfg["path"]))
         self.tray.showMessage(title, body, QtWidgets.QSystemTrayIcon.Information, 10000)
         self.tray.setToolTip("%s - 이미지를 선택하세요" % APP_NAME)
+
+    def prompt_config_notices(self):
+        if not self.tray:
+            return
+        for notice in consume_config_notices():
+            self.tray.showMessage("설정 안내", notice, QtWidgets.QSystemTrayIcon.Warning, 10000)
 
     def pick_file(self):
         start = self.cfg["path"] if os.path.exists(self.cfg["path"] or "") else os.path.expanduser("~")
@@ -446,42 +542,76 @@ class Pet(QtWidgets.QWidget):
                 self.tray.setToolTip(APP_NAME)
 
     def load_image(self, path):
-        try:
-            self.frames = read_frames(path)
-        except Exception as e:
-            self.need_image = "missing"
-            if self.tray:
-                self.tray.showMessage(
-                    "이미지를 읽지 못했습니다", "%s\n%s" % (os.path.basename(path), e),
-                    QtWidgets.QSystemTrayIcon.Warning, 10000)
-            else:
-                QtWidgets.QMessageBox.critical(None, "오류", "이미지를 읽지 못했습니다.\n%s" % e)
-            return
-        self.cfg["path"] = path
-        if self.cfg["auto_bg"]:
-            self.cfg["bg_color"] = detect_bg_color(self.frames[0][0]).tolist()
-        h, w = self.frames[0][0].shape[:2]
-        if (w, h) != self.base_size:
-            self.cfg["size"] = None   # 다른 비율의 이미지면 직접 입력값은 버린다
-        self.base_size = (w, h)
-        self.rebuild()
+        self.need_image = None
+        self.start_processing(path=path, frames=None, detect_bg=bool(self.cfg["auto_bg"]))
 
     def rebuild(self):
-        if not self.cfg["remove_bg"]:
-            self.pixmaps = [(to_qpixmap(f), d) for f, d in self.frames]
+        if not self.frames:
+            return
+        self.start_processing(path=None, frames=self.frames, detect_bg=False)
+
+    def start_processing(self, path=None, frames=None, detect_bg=False):
+        self._job_id += 1
+        job_id = self._job_id
+        if self.tray:
+            self.tray.setToolTip(PROCESSING_TOOLTIP)
+
+        thread = QtCore.QThread(self)
+        worker = ImageProcessWorker(job_id, self.cfg, path=path, frames=frames, detect_bg=detect_bg)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.on_processing_finished)
+        worker.failed.connect(self.on_processing_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(lambda w=worker, t=thread: self.cleanup_worker(w, t))
+        self._workers.append((worker, thread))
+        thread.start()
+
+    def cleanup_worker(self, worker, thread):
+        self._workers = [(w, t) for w, t in self._workers if w is not worker and t is not thread]
+        worker.deleteLater()
+        thread.deleteLater()
+
+    def on_processing_finished(self, job_id, result):
+        if job_id != self._job_id:
+            return
+        path = result.get("path")
+        frames = result["frames"]
+        rendered = result["rendered"]
+        if path:
+            self.cfg["path"] = path
+            self.frames = frames
+            if result.get("bg_color") is not None:
+                self.cfg["bg_color"] = result["bg_color"]
+            h, w = frames[0][0].shape[:2]
+            if (w, h) != self.base_size:
+                self.cfg["size"] = None   # 다른 비율의 이미지면 직접 입력값은 버린다
+            self.base_size = (w, h)
+        self.apply_rendered_frames(rendered)
+        self.persist()
+        if self.tray:
+            self.tray.setToolTip(APP_NAME)
+            self.tray.refresh_icon()
+
+    def on_processing_failed(self, job_id, path, message):
+        if job_id != self._job_id:
+            return
+        self.need_image = "missing"
+        self.missing_image_path = path
+        if self.tray:
+            self.tray.setToolTip("%s - 이미지를 선택하세요" % APP_NAME)
+            self.tray.showMessage(
+                "이미지를 읽지 못했습니다", "%s\n%s" % (path or "(경로 없음)", message),
+                QtWidgets.QSystemTrayIcon.Warning, 10000)
         else:
-            bg = np.array(self.cfg["bg_color"], dtype=np.float32)
-            self.pixmaps = [
-                (to_qpixmap(key_out(f, bg, self.cfg["tolerance"], self.cfg["softness"],
-                                    self.cfg["despill"], self.cfg["edge_only"],
-                                    self.cfg["edge_thresh"], self.cfg["holes"])), d)
-                for f, d in self.frames
-            ]
+            QtWidgets.QMessageBox.critical(None, "오류", "이미지를 읽지 못했습니다.\n%s" % message)
+
+    def apply_rendered_frames(self, rendered):
+        self.pixmaps = [(to_qpixmap(f), d) for f, d in rendered]
         self.index = 0
         self.apply_scale()
         self.show_frame()
-        if self.tray:
-            self.tray.refresh_icon()
         self.timer.stop()
         if len(self.pixmaps) > 1:
             self.timer.start(self.pixmaps[0][1])
@@ -546,18 +676,34 @@ class Pet(QtWidgets.QWidget):
     def mousePressEvent(self, e):
         if e.button() == QtCore.Qt.LeftButton:
             self._drag = e.globalPos() - self.frameGeometry().topLeft()
+            self._drag_start_global = e.globalPos()
+            self._drag_start_window = self.pos()
+            self._drag_moved = False
             e.accept()
 
     def mouseMoveEvent(self, e):
-        if self._drag and e.buttons() & QtCore.Qt.LeftButton:
+        if self._drag is not None and e.buttons() & QtCore.Qt.LeftButton:
+            if self._drag_start_global is not None:
+                distance = (e.globalPos() - self._drag_start_global).manhattanLength()
+                if distance >= QtWidgets.QApplication.startDragDistance():
+                    self._drag_moved = True
+            if not self._drag_moved:
+                e.accept()
+                return
             self.move(e.globalPos() - self._drag)
             e.accept()
 
     def mouseReleaseEvent(self, e):
-        if self._drag is not None:
+        moved = (self._drag_moved
+                 and self._drag_start_window is not None
+                 and self.pos() != self._drag_start_window)
+        if moved:
             # 직접 끌어다 놓았으면 커스텀 위치다. 구석 기억을 버린다
             self.cfg["anchor"] = None
         self._drag = None
+        self._drag_start_global = None
+        self._drag_start_window = None
+        self._drag_moved = False
         self.persist()
 
     def wheelEvent(self, e):
@@ -725,6 +871,9 @@ class Pet(QtWidgets.QWidget):
 
     def set_margin(self, v):
         self.cfg["snap_margin"] = v
+        if self.cfg.get("anchor"):
+            self.restore_position()
+            return
         self.persist()
 
     def screen_of_window(self):
@@ -775,6 +924,7 @@ class Pet(QtWidgets.QWidget):
     def persist(self):
         self.cfg["x"], self.cfg["y"] = self.x(), self.y()
         save_config(self.cfg)
+        self.prompt_config_notices()
 
 
 class Tray(QtWidgets.QSystemTrayIcon):
@@ -807,13 +957,17 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     cfg = load_config()
-    if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
-        cfg["path"] = sys.argv[1]
+    if len(sys.argv) > 1:
+        if os.path.exists(sys.argv[1]):
+            cfg["path"] = sys.argv[1]
+        else:
+            cfg["_startup_missing_path"] = sys.argv[1]
 
     pet = Pet(cfg)                 # 참조를 유지해야 창이 사라지지 않는다
     tray = Tray(pet)
     pet.tray = tray
     tray.refresh_icon()
+    pet.prompt_config_notices()
     pet.prompt_if_no_image()
     app.pet, app.tray = pet, tray  # 가비지 컬렉션 방지
     sys.exit(app.exec_())

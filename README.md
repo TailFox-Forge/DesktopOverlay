@@ -34,7 +34,9 @@ GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표�
 
 [릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 `Desktop_Overlay_Start.exe` 를 내려받아 더블클릭하면 됩니다.
 
-설정은 exe 가 놓인 폴더에 `config.json` 으로 저장되므로, exe 를 옮길 때는 폴더째 옮기세요.
+설정은 기본적으로 exe 가 놓인 폴더에 `config.json` 으로 저장됩니다.
+
+그 폴더에 쓸 수 없으면 `%LOCALAPPDATA%\DesktopOverlay\config.json` 으로 자동 전환하고 트레이 알림으로 알려줍니다.
 
 ### 소스에서
 
@@ -63,7 +65,18 @@ python desktop_overlay.py character.gif
 
 ### exe 직접 빌드
 
-`build.bat` 을 실행하면 `dist\Desktop_Overlay_Start.exe` 가 만들어집니다.
+`build.bat` 을 실행하면 고정된 빌드 도구 버전으로 `dist\Desktop_Overlay_Start.exe` 가 만들어집니다.
+
+```bat
+build.bat
+```
+
+테스트는 아래처럼 실행합니다.
+
+```bash
+pip install -r requirements.txt -r requirements-build.txt
+pytest
+```
 
 ## 처음 실행하면
 
@@ -115,6 +128,8 @@ python desktop_overlay.py character.gif
 위치를 옮기려면 트레이 아이콘 → **클릭 통과**를 끄고 드래그한 뒤 다시 켜세요.
 
 모든 설정은 바꾸는 즉시 `config.json`에 저장되어 다음 실행 때 복원됩니다.
+
+설정 파일이 손상되었거나 실행 폴더에 저장할 수 없으면 기본값 또는 사용자 설정 폴더로 복구하고 트레이 알림으로 알려줍니다.
 
 예외는 **숨김 상태**입니다.
 
@@ -173,7 +188,7 @@ python desktop_overlay.py character.gif
 
 위치는 그대로 두고 고정만 풀고 싶으면 위치 바로가기 메뉴의 **구석 고정 해제** 를 쓰세요.
 
-위치·크기·설정은 실행 파일 옆 `config.json`에 자동 저장되어 다음 실행 때 복원됩니다.
+위치·크기·설정은 실행 파일 옆 `config.json`에 자동 저장되어 다음 실행 때 복원됩니다. 실행 파일 폴더에 저장할 수 없으면 사용자 설정 폴더로 자동 전환됩니다.
 
 ## 방송 송출
 
@@ -212,6 +227,7 @@ python desktop_overlay.py character.gif
 - 배경과 피사체 사이에 외곽선이 없고 색까지 같으면 경계를 찾지 못합니다.
 - **둘러싸인 배경도 제거**는 흰·검·회색 배경에서 피사체 고유색과 구분할 수 없으므로, 채도가 높은 단색 배경일 때만 실제로 적용됩니다.
 - 선화·일러스트·스티커에 적합하며, 사진처럼 외곽선이 없는 이미지에는 잘 맞지 않습니다.
+- 큰 이미지나 긴 GIF는 백그라운드에서 처리합니다. 처리 중에는 기존 이미지가 유지되며, 완료 후 새 이미지로 바뀝니다.
 
 ## 문서
 
