@@ -12,15 +12,15 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.2.3** 입니다.
+현재 최신 릴리스는 **v0.3.0** 입니다.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.2.3/Desktop_Overlay_Start.exe)
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.0/Desktop_Overlay_Start.exe)
 
 ```text
-SHA256: f8ababc3d0c84b8bd32f581af1066a180f0344bb2bfdbeb4c8574448eb1d0703
+SHA256: 8a71faa21c5e5370cce8a0a65d38cf8fbed00f32dd8062d4fbd505e704b68d99
 ```
 
-v0.2.3에서는 단축키 설정창 크기와 입력 처리를 보강했습니다. 조합키 입력, 이미 등록된 단축키 재배정, 넘버패드 숫자 단독 등록이 정상 동작합니다.
+v0.3.0에서는 트레이 메뉴에서 Windows 시작 시 자동 실행을 켜고 끌 수 있습니다. 레지스트리가 아니라 시작프로그램 폴더의 `DesktopOverlay.lnk` 바로가기를 만들고 삭제합니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
