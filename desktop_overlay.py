@@ -15,6 +15,7 @@ import ctypes
 import ctypes.wintypes
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -24,7 +25,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.2.3"
+APP_VERSION = "0.3.0"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
@@ -43,6 +44,7 @@ LOCAL_CONFIG_PATH = os.path.join(LOCAL_CONFIG_ROOT, APP_NAME, "config.json")
 CONFIG_PATH = PORTABLE_CONFIG_PATH
 CONFIG_NOTICES = []
 IMAGE_FILTER = "이미지 (*.gif *.png *.jpg *.jpeg *.webp *.bmp);;모든 파일 (*.*)"
+STARTUP_SHORTCUT_NAME = "%s.lnk" % APP_NAME
 MIN_SIZE = 48      # 이보다 작아지면 우클릭 메뉴조차 열기 어려워진다
 MAX_SIZE = 4000
 MAX_FRAME_PIXELS = 4_000_000
@@ -159,6 +161,140 @@ MOD_CONTROL = 0x0002
 MOD_SHIFT = 0x0004
 MOD_WIN = 0x0008
 MOD_NOREPEAT = 0x4000
+
+
+def is_frozen_app():
+    return bool(getattr(sys, "frozen", False))
+
+
+def windows_startup_folder():
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return ""
+    return os.path.join(appdata, "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+
+
+def startup_shortcut_path():
+    folder = windows_startup_folder()
+    if not folder:
+        return ""
+    return os.path.join(folder, STARTUP_SHORTCUT_NAME)
+
+
+def current_startup_target():
+    if is_frozen_app():
+        return os.path.abspath(sys.executable), "", APP_DIR
+    return os.path.abspath(sys.executable), '"%s"' % os.path.abspath(__file__), APP_DIR
+
+
+def ps_quote(value):
+    return "'%s'" % str(value or "").replace("'", "''")
+
+
+def run_powershell(script):
+    last_error = None
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    for executable in ("powershell.exe", "powershell"):
+        try:
+            result = subprocess.run(
+                [executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-"],
+                input=script,
+                text=True,
+                capture_output=True,
+                timeout=15,
+                creationflags=flags,
+            )
+        except FileNotFoundError as exc:
+            last_error = exc
+            continue
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout or "").strip()
+            raise RuntimeError(message or "PowerShell 실행에 실패했습니다.")
+        return result.stdout.strip()
+    raise RuntimeError("PowerShell을 찾을 수 없습니다. %s" % last_error)
+
+
+def read_startup_shortcut(shortcut_path=None):
+    shortcut_path = shortcut_path or startup_shortcut_path()
+    if os.name != "nt" or not shortcut_path or not os.path.exists(shortcut_path):
+        return None
+    script = "\n".join([
+        "$shortcutPath = %s" % ps_quote(shortcut_path),
+        "$shell = New-Object -ComObject WScript.Shell",
+        "$shortcut = $shell.CreateShortcut($shortcutPath)",
+        "$data = @{ TargetPath = $shortcut.TargetPath; Arguments = $shortcut.Arguments }",
+        "$data | ConvertTo-Json -Compress",
+    ])
+    output = run_powershell(script)
+    return json.loads(output) if output else None
+
+
+def startup_shortcut_matches_current(shortcut_path=None):
+    info = read_startup_shortcut(shortcut_path)
+    if not info:
+        return False
+    target, arguments, _working_dir = current_startup_target()
+    actual_target = os.path.normcase(os.path.abspath(info.get("TargetPath") or ""))
+    expected_target = os.path.normcase(os.path.abspath(target))
+    actual_arguments = (info.get("Arguments") or "").strip()
+    return actual_target == expected_target and actual_arguments == arguments.strip()
+
+
+def startup_state():
+    path = startup_shortcut_path()
+    if os.name != "nt":
+        return {"supported": False, "path": path, "exists": False, "matches": False, "error": ""}
+    if not path:
+        return {
+            "supported": False,
+            "path": "",
+            "exists": False,
+            "matches": False,
+            "error": "APPDATA 환경 변수를 찾을 수 없습니다.",
+        }
+    exists = os.path.exists(path)
+    if not exists:
+        return {"supported": True, "path": path, "exists": False, "matches": False, "error": ""}
+    try:
+        matches = startup_shortcut_matches_current(path)
+        error = ""
+    except Exception as exc:
+        matches = False
+        error = str(exc)
+    return {"supported": True, "path": path, "exists": True, "matches": matches, "error": error}
+
+
+def create_startup_shortcut(shortcut_path=None):
+    if os.name != "nt":
+        raise RuntimeError("윈도우에서만 자동 실행을 설정할 수 있습니다.")
+    shortcut_path = shortcut_path or startup_shortcut_path()
+    if not shortcut_path:
+        raise RuntimeError("시작프로그램 폴더를 찾을 수 없습니다.")
+    target, arguments, working_dir = current_startup_target()
+    script = "\n".join([
+        "$shortcutPath = %s" % ps_quote(shortcut_path),
+        "$targetPath = %s" % ps_quote(target),
+        "$arguments = %s" % ps_quote(arguments),
+        "$workingDirectory = %s" % ps_quote(working_dir),
+        "$folder = Split-Path -Parent $shortcutPath",
+        "New-Item -ItemType Directory -Force -Path $folder | Out-Null",
+        "$shell = New-Object -ComObject WScript.Shell",
+        "$shortcut = $shell.CreateShortcut($shortcutPath)",
+        "$shortcut.TargetPath = $targetPath",
+        "$shortcut.Arguments = $arguments",
+        "$shortcut.WorkingDirectory = $workingDirectory",
+        "$shortcut.IconLocation = \"$targetPath,0\"",
+        "$shortcut.Save()",
+    ])
+    run_powershell(script)
+    return shortcut_path
+
+
+def remove_startup_shortcut(shortcut_path=None):
+    shortcut_path = shortcut_path or startup_shortcut_path()
+    if shortcut_path and os.path.exists(shortcut_path):
+        os.remove(shortcut_path)
+    return shortcut_path
 
 
 def normalize_hotkeys(value):
@@ -1457,6 +1593,7 @@ class Pet(QtWidgets.QWidget):
         self.add_update_menu(m)
         m.addSeparator()
         m.addAction("이미지 열기…", self.pick_file)
+        self.add_startup_menu(m)
         hotkeys_enabled = bool(self.cfg.get("hotkeys_enabled", True))
         m.addAction("단축키 비활성화" if hotkeys_enabled else "단축키 활성화",
                     self.toggle_hotkeys_enabled)
@@ -1542,6 +1679,50 @@ class Pet(QtWidgets.QWidget):
         if self.last_update_error and not self.update_available:
             err = parent.addAction("최근 확인 실패")
             err.setEnabled(False)
+
+    def add_startup_menu(self, parent):
+        state = startup_state()
+        if not state["supported"]:
+            action = parent.addAction("윈도우 시작 시 자동 실행")
+            action.setCheckable(True)
+            action.setChecked(False)
+            action.setEnabled(False)
+            return
+        if state["exists"] and not state["matches"]:
+            label = "자동 실행 경로 갱신"
+            checked = False
+        else:
+            label = "윈도우 시작 시 자동 실행"
+            checked = bool(state["exists"])
+        action = parent.addAction(label)
+        action.setCheckable(True)
+        action.setChecked(checked)
+        action.triggered.connect(lambda checked, s=state: self.set_startup_enabled(checked or bool(s["error"])))
+        if state["error"]:
+            note = parent.addAction("자동 실행 바로가기 확인 필요")
+            note.setEnabled(False)
+
+    def set_startup_enabled(self, enabled):
+        try:
+            if enabled:
+                path = create_startup_shortcut()
+                title = "자동 실행 설정"
+                body = "윈도우 시작프로그램 폴더에 바로가기를 만들었습니다.\n%s" % path
+            else:
+                path = remove_startup_shortcut()
+                title = "자동 실행 해제"
+                body = "윈도우 시작프로그램 폴더의 바로가기를 삭제했습니다.\n%s" % path
+            if self.tray:
+                self.tray.showMessage(title, body, QtWidgets.QSystemTrayIcon.Information, 8000)
+        except Exception as exc:
+            if self.tray:
+                self.tray.showMessage(
+                    "자동 실행 설정 실패",
+                    str(exc),
+                    QtWidgets.QSystemTrayIcon.Warning,
+                    10000)
+            else:
+                QtWidgets.QMessageBox.warning(None, "자동 실행 설정 실패", str(exc))
 
     def center_on_screen(self):
         self.snap_to(QtWidgets.QApplication.primaryScreen(), 1, 1)

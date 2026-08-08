@@ -69,6 +69,72 @@ def test_config_falls_back_to_local_path_when_portable_write_fails(overlay_modul
     assert "사용자 설정 폴더로 전환" in "\n".join(mod.consume_config_notices())
 
 
+def test_startup_shortcut_path_uses_windows_startup_folder(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod.os, "name", "nt")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+
+    assert mod.startup_shortcut_path().endswith(
+        os.path.join(
+            "Roaming",
+            "Microsoft",
+            "Windows",
+            "Start Menu",
+            "Programs",
+            "Startup",
+            "DesktopOverlay.lnk",
+        )
+    )
+
+
+def test_create_startup_shortcut_builds_current_exe_link(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    scripts = []
+    exe = tmp_path / "Desktop_Overlay_Start.exe"
+    exe.write_text("exe", encoding="utf-8")
+    monkeypatch.setattr(mod.os, "name", "nt")
+    monkeypatch.setattr(mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(mod.sys, "executable", str(exe))
+    monkeypatch.setattr(mod, "APP_DIR", str(tmp_path))
+    monkeypatch.setattr(mod, "run_powershell", lambda script: scripts.append(script) or "")
+    shortcut = tmp_path / "Startup" / "DesktopOverlay.lnk"
+
+    assert mod.create_startup_shortcut(str(shortcut)) == str(shortcut)
+
+    script = scripts[0]
+    assert "CreateShortcut" in script
+    assert str(shortcut) in script
+    assert str(exe) in script
+    assert "$shortcut.TargetPath = $targetPath" in script
+    assert "$shortcut.Save()" in script
+
+
+def test_remove_startup_shortcut_deletes_link(overlay_module, tmp_path):
+    mod = overlay_module
+    shortcut = tmp_path / "DesktopOverlay.lnk"
+    shortcut.write_text("link", encoding="utf-8")
+
+    mod.remove_startup_shortcut(str(shortcut))
+
+    assert not shortcut.exists()
+
+
+def test_startup_state_reports_stale_shortcut(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    startup = tmp_path / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    startup.mkdir(parents=True)
+    (startup / "DesktopOverlay.lnk").write_text("old", encoding="utf-8")
+    monkeypatch.setattr(mod.os, "name", "nt")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setattr(mod, "startup_shortcut_matches_current", lambda path: False)
+
+    state = mod.startup_state()
+
+    assert state["supported"]
+    assert state["exists"]
+    assert not state["matches"]
+
+
 def test_outside_region_keeps_enclosed_area_outside_false(overlay_module):
     mod = overlay_module
     passable = np.ones((7, 7), dtype=bool)
