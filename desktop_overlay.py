@@ -22,7 +22,13 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# PyInstaller onefile 로 묶으면 __file__ 은 임시 압축 해제 폴더를 가리킨다.
+# 설정은 exe 가 놓인 폴더에 저장해야 다음 실행 때 남아 있다.
+if getattr(sys, "frozen", False):
+    APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(APP_DIR, "config.json")
 IMAGE_FILTER = "이미지 (*.gif *.png *.jpg *.jpeg *.webp *.bmp);;모든 파일 (*.*)"
 MIN_SIZE = 48      # 이보다 작아지면 우클릭 메뉴조차 열기 어려워진다
@@ -320,6 +326,7 @@ class Pet(QtWidgets.QWidget):
         self._drag = None
         self.tray = None
         self.hidden = False      # 숨김 상태는 저장하지 않는다. 다음 실행 때는 항상 보인다
+        self.need_image = None   # None / "first" / "missing"
 
         self.setWindowTitle(APP_NAME)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
@@ -330,10 +337,15 @@ class Pet(QtWidgets.QWidget):
         self.timer.timeout.connect(self.next_frame)
 
         self.move(cfg["x"], cfg["y"])
-        if cfg["path"] and os.path.exists(cfg["path"]):
-            self.load_image(cfg["path"])
+        # 이미지가 없으면 파일 대화상자를 곧바로 띄우지 않는다.
+        # 트레이 아이콘이 준비된 뒤 알림으로 안내한다 (main 에서 prompt_if_no_image 호출).
+        if not cfg["path"]:
+            self.need_image = "first"
+        elif not os.path.exists(cfg["path"]):
+            self.need_image = "missing"
         else:
-            self.pick_file()
+            self.load_image(cfg["path"])
+        self.persist()   # 첫 실행에서도 설정 파일이 생기도록
 
     # ---- 창 속성
     def apply_window_flags(self):
@@ -378,20 +390,46 @@ class Pet(QtWidgets.QWidget):
         return super().nativeEvent(event_type, message)
 
     # ---- 로딩 / 처리
+    def prompt_if_no_image(self):
+        """띄울 이미지가 없을 때 트레이 알림으로 안내한다.
+        파일 대화상자를 강제로 띄우면 트레이에 있는 프로그램이라는 걸 알기 어렵다."""
+        if not self.need_image or not self.tray:
+            return
+        if self.need_image == "first":
+            title = "%s 를 시작했습니다" % APP_NAME
+            body = ("띄울 이미지가 아직 없습니다.\n"
+                    "트레이 아이콘을 클릭해 [이미지 열기] 를 선택하세요.")
+        else:
+            title = "이미지를 찾을 수 없습니다"
+            body = ("전에 쓰던 파일이 옮겨졌거나 삭제되었습니다.\n%s\n"
+                    "트레이 아이콘을 클릭해 [이미지 열기] 로 다시 선택하세요."
+                    % os.path.basename(self.cfg["path"]))
+        self.tray.showMessage(title, body, QtWidgets.QSystemTrayIcon.Information, 10000)
+        self.tray.setToolTip("%s - 이미지를 선택하세요" % APP_NAME)
+
     def pick_file(self):
+        start = self.cfg["path"] if os.path.exists(self.cfg["path"] or "") else os.path.expanduser("~")
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            None, "띄울 이미지 선택", self.cfg["path"] or os.path.expanduser("~"), IMAGE_FILTER)
+            None, "띄울 이미지 선택", start, IMAGE_FILTER)
         if path:
             self.cfg["path"] = path
+            self.need_image = None
             self.load_image(path)
-        elif not self.frames:
-            QtWidgets.QApplication.quit()
+            self.persist()
+            if self.tray:
+                self.tray.setToolTip(APP_NAME)
 
     def load_image(self, path):
         try:
             self.frames = read_frames(path)
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "오류", "이미지를 읽지 못했습니다.\n%s" % e)
+            self.need_image = "missing"
+            if self.tray:
+                self.tray.showMessage(
+                    "이미지를 읽지 못했습니다", "%s\n%s" % (os.path.basename(path), e),
+                    QtWidgets.QSystemTrayIcon.Warning, 10000)
+            else:
+                QtWidgets.QMessageBox.critical(None, "오류", "이미지를 읽지 못했습니다.\n%s" % e)
             return
         self.cfg["path"] = path
         if self.cfg["auto_bg"]:
@@ -700,6 +738,7 @@ def main():
     tray = Tray(pet)
     pet.tray = tray
     tray.refresh_icon()
+    pet.prompt_if_no_image()
     app.pet, app.tray = pet, tray  # 가비지 컬렉션 방지
     sys.exit(app.exec_())
 
