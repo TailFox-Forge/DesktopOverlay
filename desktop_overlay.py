@@ -24,7 +24,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.2.2"
+APP_VERSION = "0.2.3"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
@@ -170,10 +170,12 @@ def normalize_hotkeys(value):
     return hotkeys
 
 
-def key_name_from_qt(key):
+def key_name_from_qt(key, keypad=False):
     if QtCore.Qt.Key_A <= key <= QtCore.Qt.Key_Z:
         return chr(ord("A") + key - QtCore.Qt.Key_A)
     if QtCore.Qt.Key_0 <= key <= QtCore.Qt.Key_9:
+        if keypad:
+            return "Num%d" % (key - QtCore.Qt.Key_0)
         return chr(ord("0") + key - QtCore.Qt.Key_0)
     if QtCore.Qt.Key_F1 <= key <= QtCore.Qt.Key_F24:
         return "F%d" % (key - QtCore.Qt.Key_F1 + 1)
@@ -187,11 +189,12 @@ def shortcut_from_key_event(event):
     if key in (QtCore.Qt.Key_Backspace, QtCore.Qt.Key_Delete):
         return "", None
 
-    key_name = key_name_from_qt(key)
+    modifiers = event.modifiers()
+    keypad = bool(modifiers & QtCore.Qt.KeypadModifier)
+    key_name = key_name_from_qt(key, keypad=keypad)
     if not key_name or key_name in ("Esc", "Tab"):
         return None, "이 키는 단축키로 사용할 수 없습니다."
 
-    modifiers = event.modifiers()
     parts = []
     if modifiers & QtCore.Qt.ControlModifier:
         parts.append("Ctrl")
@@ -229,7 +232,9 @@ def hotkey_to_windows(shortcut):
     if not key_name:
         return None
     upper = key_name.upper()
-    if len(upper) == 1 and upper.isalpha():
+    if upper.startswith("NUM") and upper[3:].isdigit() and 0 <= int(upper[3:]) <= 9:
+        vk = 0x60 + int(upper[3:])
+    elif len(upper) == 1 and upper.isalpha():
         vk = ord(upper)
     elif len(upper) == 1 and upper.isdigit():
         vk = ord(upper)
@@ -835,10 +840,31 @@ class HotkeyCaptureButton(QtWidgets.QPushButton):
             self.capturing = False
             self.refresh()
             return
+        if event.key() in MODIFIER_KEYS:
+            event.accept()
+            return
         shortcut, error = shortcut_from_key_event(event)
         self.capturing = False
         self.refresh()
         self.captured.emit(self.command, shortcut or "", error or "")
+
+    def keyReleaseEvent(self, event):
+        if not self.capturing or event.key() not in MODIFIER_KEYS:
+            super().keyReleaseEvent(event)
+            return
+        active_modifiers = event.modifiers() & (
+            QtCore.Qt.ControlModifier
+            | QtCore.Qt.AltModifier
+            | QtCore.Qt.ShiftModifier
+            | QtCore.Qt.MetaModifier)
+        if not active_modifiers:
+            self.capturing = False
+            self.refresh()
+            self.captured.emit(
+                self.command,
+                "",
+                "Ctrl, Alt, Shift, Win 만으로는 단축키를 만들 수 없습니다.")
+        event.accept()
 
 
 class HotkeyDialog(QtWidgets.QDialog):
@@ -849,9 +875,12 @@ class HotkeyDialog(QtWidgets.QDialog):
         self.buttons = {}
         self.setWindowTitle("단축키 설정")
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowStaysOnTopHint)
-        self.resize(640, 720)
+        self.setMinimumSize(980, 720)
+        self.resize(1080, 760)
 
         root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(8)
         hint = QtWidgets.QLabel(
             "단축키 버튼을 누른 뒤 원하는 키를 입력하세요. 기본값은 모두 미등록입니다.")
         hint.setWordWrap(True)
@@ -864,21 +893,23 @@ class HotkeyDialog(QtWidgets.QDialog):
         screen_row.addWidget(self.screen_combo, 1)
         root.addLayout(screen_row)
 
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        body = QtWidgets.QWidget()
-        body_layout = QtWidgets.QVBoxLayout(body)
-        self.add_group(body_layout, "표시", ["toggle_visible", "show", "hide"])
-        self.add_group(body_layout, "이미지/창", [
+        body_layout = QtWidgets.QHBoxLayout()
+        body_layout.setSpacing(12)
+        left_column = QtWidgets.QVBoxLayout()
+        right_column = QtWidgets.QVBoxLayout()
+        self.add_group(left_column, "표시", ["toggle_visible", "show", "hide"])
+        self.add_group(left_column, "이미지/창", [
             "open_image", "flip", "topmost", "click_through", "disable_hotkeys"])
         self.add_group(
-            body_layout,
+            left_column,
             "크기",
             ["scale_%d" % v for v in SIZE_PRESETS] + ["scale_cycle"])
-        self.add_group(body_layout, "위치", ["snap_%s" % code for _label, _hx, _vy, code in SNAP_SPOTS])
-        body_layout.addStretch(1)
-        scroll.setWidget(body)
-        root.addWidget(scroll, 1)
+        left_column.addStretch(1)
+        self.add_group(right_column, "위치", ["snap_%s" % code for _label, _hx, _vy, code in SNAP_SPOTS])
+        right_column.addStretch(1)
+        body_layout.addLayout(left_column, 1)
+        body_layout.addLayout(right_column, 1)
+        root.addLayout(body_layout, 1)
 
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
         reset = buttons.addButton("전체 초기화", QtWidgets.QDialogButtonBox.ResetRole)
@@ -888,6 +919,15 @@ class HotkeyDialog(QtWidgets.QDialog):
         root.addWidget(buttons)
 
         self.center_on_primary()
+
+    def showEvent(self, event):
+        self.pet.unregister_hotkeys()
+        super().showEvent(event)
+
+    def closeEvent(self, event):
+        if self.result() != QtWidgets.QDialog.Accepted:
+            self.pet.register_hotkeys(show_errors=True)
+        super().closeEvent(event)
 
     def populate_screens(self):
         selected = self.pet.cfg.get("hotkey_screen") or ""
@@ -908,6 +948,9 @@ class HotkeyDialog(QtWidgets.QDialog):
     def add_group(self, layout, title, commands):
         group = QtWidgets.QGroupBox(title)
         form = QtWidgets.QGridLayout(group)
+        form.setContentsMargins(10, 10, 10, 10)
+        form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(4)
         form.setColumnStretch(1, 1)
         for row, command in enumerate(commands):
             form.addWidget(QtWidgets.QLabel(HOTKEY_LABELS[command]), row, 0)
@@ -961,12 +1004,18 @@ class HotkeyDialog(QtWidgets.QDialog):
         self.pet.register_hotkeys(show_errors=True)
         super().accept()
 
+    def reject(self):
+        self.pet.register_hotkeys(show_errors=True)
+        super().reject()
+
     def center_on_primary(self):
         screen = QtWidgets.QApplication.primaryScreen()
         if not screen:
             return
-        self.adjustSize()
         geo = screen.availableGeometry()
+        max_width = max(640, geo.width() - 40)
+        max_height = max(640, geo.height() - 40)
+        self.resize(min(self.width(), max_width), min(self.height(), max_height))
         self.move(geo.center() - self.rect().center())
 
 

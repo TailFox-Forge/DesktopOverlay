@@ -165,6 +165,48 @@ def test_shortcut_rejects_text_key_without_modifier(overlay_module):
     assert "문자/숫자 단독키" in error
 
 
+def test_shortcut_allows_numpad_digit_without_modifier(overlay_module):
+    mod = overlay_module
+    event = QtGui.QKeyEvent(
+        QtCore.QEvent.KeyPress,
+        QtCore.Qt.Key_1,
+        QtCore.Qt.KeypadModifier,
+    )
+
+    shortcut, error = mod.shortcut_from_key_event(event)
+
+    assert shortcut == "Num1"
+    assert error is None
+    assert mod.hotkey_to_windows("Num1") == (mod.MOD_NOREPEAT, 0x61)
+
+
+def test_hotkey_capture_waits_for_modifier_combo(qapp, overlay_module):
+    mod = overlay_module
+    button = mod.HotkeyCaptureButton("show")
+    captured = []
+    button.captured.connect(lambda command, shortcut, error: captured.append((command, shortcut, error)))
+
+    try:
+        button.start_capture()
+        button.keyPressEvent(QtGui.QKeyEvent(
+            QtCore.QEvent.KeyPress,
+            QtCore.Qt.Key_Control,
+            QtCore.Qt.ControlModifier,
+        ))
+        assert captured == []
+        assert button.capturing
+
+        button.keyPressEvent(QtGui.QKeyEvent(
+            QtCore.QEvent.KeyPress,
+            QtCore.Qt.Key_F1,
+            QtCore.Qt.ControlModifier,
+        ))
+        assert captured == [("show", "Ctrl+F1", "")]
+        assert not button.capturing
+    finally:
+        button.deleteLater()
+
+
 def test_anchor_margin_and_click_behavior(qapp, overlay_module):
     mod = overlay_module
     cfg = dict(mod.DEFAULTS)
