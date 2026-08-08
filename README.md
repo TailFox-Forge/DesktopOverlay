@@ -1,6 +1,16 @@
 # DesktopOverlay
 
+[![다운로드](https://img.shields.io/github/v/release/TailFox-Forge/DesktopOverlay?label=%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C&style=for-the-badge)](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)
+[![내려받은 횟수](https://img.shields.io/github/downloads/TailFox-Forge/DesktopOverlay/total?label=%EB%82%B4%EB%A0%A4%EB%B0%9B%EC%9D%80%20%ED%9A%9F%EC%88%98&style=for-the-badge)](https://github.com/TailFox-Forge/DesktopOverlay/releases)
+[![라이선스](https://img.shields.io/github/license/TailFox-Forge/DesktopOverlay?label=%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4&style=for-the-badge)](LICENSE)
+
 어떤 이미지든 바탕화면 원하는 위치와 크기에 **배경 없이** 띄워두는 윈도우용 오버레이입니다.
+
+### ⬇ [Desktop_Overlay_Start.exe 내려받기](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest/download/Desktop_Overlay_Start.exe)
+
+내려받아 더블클릭하면 끝입니다.
+
+파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
@@ -22,15 +32,15 @@ GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표�
 
 ### 파이썬 없이 (권장)
 
-`Desktop_Overlay_Start.exe` 를 내려받아 더블클릭하면 됩니다.
-
-설치 과정이 없고 파이썬도 필요 없습니다.
+[릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 `Desktop_Overlay_Start.exe` 를 내려받아 더블클릭하면 됩니다.
 
 설정은 exe 가 놓인 폴더에 `config.json` 으로 저장되므로, exe 를 옮길 때는 폴더째 옮기세요.
 
 ### 소스에서
 
 Python 3.8 이상이 필요합니다.
+
+릴리스 페이지의 **Source code (zip)** 을 받거나 저장소를 클론하세요.
 
 `Desktop_Overlay_Start.bat` 을 더블클릭하면 파이썬과 라이브러리를 점검한 뒤 실행합니다.
 
