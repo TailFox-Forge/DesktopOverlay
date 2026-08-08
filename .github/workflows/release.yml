@@ -56,9 +56,9 @@ jobs:
           - 구석 고정, 설정 저장, 소스 실행 배치 파일, 테스트/빌드 재현성을 보강했습니다.
 
           SHA256:
-          ````text
+          ~~~text
           ${{ steps.hash.outputs.sha256 }}  Desktop_Overlay_Start.exe
-          ````
+          ~~~
           "@ | Set-Content -Encoding utf8 release_notes.md
       - name: Publish GitHub release
         env:

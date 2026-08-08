@@ -12,6 +12,16 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
+현재 최신 릴리스는 **v0.2.0** 입니다.
+
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.2.0/Desktop_Overlay_Start.exe)
+
+```text
+SHA256: 7747c8b930a6372ff4ce81f9d1490e46a375e2c7b162e7fdc918e3aa537f3a8e
+```
+
+v0.2.0에서는 대형 이미지/GIF 처리 중 UI 멈춤을 줄이고, 구석 고정·설정 저장·실행 배치 파일·자동 테스트/릴리즈 빌드를 보강했습니다.
+
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
 기본값이 클릭 통과라 게임이나 작업을 가리지 않고, 트레이 아이콘에서 모든 설정을 바꿀 수 있습니다.
