@@ -16,12 +16,18 @@ import ctypes.wintypes
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 
 import numpy as np
 from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
+APP_VERSION = "0.2.1"
+RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
+RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
+UPDATE_CHECK_TIMEOUT_SEC = 8
 
 # PyInstaller onefile 로 묶으면 __file__ 은 임시 압축 해제 폴더를 가리킨다.
 # 설정은 exe 가 놓인 폴더에 저장해야 다음 실행 때 남아 있다.
@@ -146,6 +152,52 @@ def save_config(cfg):
                     % (primary_error, fallback_error))
         else:
             add_config_notice("설정을 저장하지 못했습니다.\n%s" % primary_error)
+
+
+# ---------------------------------------------------------------- 업데이트 확인
+
+def parse_version(value):
+    """v0.2.1 같은 릴리스 태그를 비교 가능한 숫자 tuple 로 바꾼다."""
+    text = str(value or "").strip()
+    if text.lower().startswith("v"):
+        text = text[1:]
+    text = text.split("-", 1)[0].split("+", 1)[0]
+    if not text:
+        return None
+    parts = text.split(".")
+    nums = []
+    for part in parts:
+        if not part.isdigit():
+            return None
+        nums.append(int(part))
+    while len(nums) < 3:
+        nums.append(0)
+    return tuple(nums[:3])
+
+
+def is_newer_version(latest_tag, current_version=APP_VERSION):
+    latest = parse_version(latest_tag)
+    current = parse_version(current_version)
+    return bool(latest and current and latest > current)
+
+
+def fetch_latest_release():
+    req = urllib.request.Request(
+        RELEASES_LATEST_API,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "%s/%s" % (APP_NAME, APP_VERSION),
+        },
+    )
+    with urllib.request.urlopen(req, timeout=UPDATE_CHECK_TIMEOUT_SEC) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    tag = data.get("tag_name") or ""
+    return {
+        "tag": tag,
+        "name": data.get("name") or tag,
+        "url": data.get("html_url") or RELEASES_LATEST_URL,
+        "newer": is_newer_version(tag),
+    }
 
 
 # ---------------------------------------------------------------- 이미지 처리
@@ -347,6 +399,23 @@ class ImageProcessWorker(QtCore.QObject):
             self.failed.emit(self.job_id, self.path or "", str(e))
 
 
+class UpdateCheckWorker(QtCore.QObject):
+    finished = QtCore.pyqtSignal(int, object, bool)
+    failed = QtCore.pyqtSignal(int, str, bool)
+
+    def __init__(self, job_id, silent):
+        super().__init__()
+        self.job_id = job_id
+        self.silent = silent
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        try:
+            self.finished.emit(self.job_id, fetch_latest_release(), self.silent)
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
+            self.failed.emit(self.job_id, str(e), self.silent)
+
+
 # ---------------------------------------------------------------- 오버레이 창
 
 class SizeDialog(QtWidgets.QDialog):
@@ -423,6 +492,12 @@ class Pet(QtWidgets.QWidget):
         self._drag_moved = False
         self._job_id = 0
         self._workers = []
+        self._update_job_id = 0
+        self._update_workers = []
+        self.update_checking = False
+        self.update_available = False
+        self.latest_release = None
+        self.last_update_error = ""
         self.tray = None
         self.hidden = False      # 숨김 상태는 저장하지 않는다. 다음 실행 때는 항상 보인다
         self.need_image = None   # None / "first" / "missing"
@@ -528,6 +603,88 @@ class Pet(QtWidgets.QWidget):
             return
         for notice in consume_config_notices():
             self.tray.showMessage("설정 안내", notice, QtWidgets.QSystemTrayIcon.Warning, 10000)
+
+    def schedule_update_check(self):
+        QtCore.QTimer.singleShot(3000, lambda: self.check_for_updates(silent=True))
+
+    def check_for_updates(self, silent=False):
+        if self.update_checking:
+            if self.tray and not silent:
+                self.tray.showMessage(
+                    "업데이트 확인",
+                    "이미 최신 릴리스를 확인하는 중입니다.",
+                    QtWidgets.QSystemTrayIcon.Information,
+                    5000)
+            return
+
+        self._update_job_id += 1
+        job_id = self._update_job_id
+        self.update_checking = True
+        self.last_update_error = ""
+        if self.tray:
+            self.tray.refresh_icon()
+
+        thread = QtCore.QThread(self)
+        worker = UpdateCheckWorker(job_id, silent)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.on_update_check_finished)
+        worker.failed.connect(self.on_update_check_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(lambda w=worker, t=thread: self.cleanup_update_worker(w, t))
+        self._update_workers.append((worker, thread))
+        thread.start()
+
+    def cleanup_update_worker(self, worker, thread):
+        self._update_workers = [
+            (w, t) for w, t in self._update_workers
+            if w is not worker and t is not thread
+        ]
+        worker.deleteLater()
+        thread.deleteLater()
+
+    def on_update_check_finished(self, job_id, result, silent):
+        if job_id != self._update_job_id:
+            return
+        self.update_checking = False
+        self.latest_release = result
+        self.update_available = bool(result.get("newer"))
+        if self.tray:
+            self.tray.refresh_icon()
+            if self.update_available and not silent:
+                self.tray.showMessage(
+                    "업데이트가 있습니다",
+                    "%s 릴리스를 사용할 수 있습니다.\n트레이 메뉴에서 업데이트 페이지를 여세요."
+                    % result.get("tag", "새 버전"),
+                    QtWidgets.QSystemTrayIcon.Information,
+                    10000)
+            elif not silent:
+                self.tray.showMessage(
+                    "최신 버전입니다",
+                    "현재 버전 %s 이 최신 릴리스입니다." % APP_VERSION,
+                    QtWidgets.QSystemTrayIcon.Information,
+                    5000)
+
+    def on_update_check_failed(self, job_id, message, silent):
+        if job_id != self._update_job_id:
+            return
+        self.update_checking = False
+        self.last_update_error = message
+        if self.tray:
+            self.tray.refresh_icon()
+            if not silent:
+                self.tray.showMessage(
+                    "업데이트 확인 실패",
+                    message,
+                    QtWidgets.QSystemTrayIcon.Warning,
+                    10000)
+
+    def open_update_page(self):
+        url = RELEASES_LATEST_URL
+        if self.latest_release and self.latest_release.get("url"):
+            url = self.latest_release["url"]
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
 
     def pick_file(self):
         start = self.cfg["path"] if os.path.exists(self.cfg["path"] or "") else os.path.expanduser("~")
@@ -729,6 +886,8 @@ class Pet(QtWidgets.QWidget):
         m = QtWidgets.QMenu(self)
         m.addAction("보이기" if self.hidden else "숨기기", self.toggle_visible)
         m.addSeparator()
+        self.add_update_menu(m)
+        m.addSeparator()
         m.addAction("이미지 열기…", self.pick_file)
         m.addAction("배경 색 다시 잡기", self.reauto_bg)
         m.addAction("배경 색 직접 고르기…", self.pick_bg_color)
@@ -788,6 +947,25 @@ class Pet(QtWidgets.QWidget):
         self.add_position_menu(m)
         m.addAction("종료", QtWidgets.QApplication.quit)
         return m
+
+    def add_update_menu(self, parent):
+        if self.update_available and self.latest_release:
+            tag = self.latest_release.get("tag") or "새 버전"
+            parent.addAction("● 업데이트 있음: %s 열기" % tag, self.open_update_page)
+        elif self.update_checking:
+            checking = parent.addAction("업데이트 확인 중…")
+            checking.setEnabled(False)
+        else:
+            parent.addAction("업데이트 확인", lambda: self.check_for_updates(silent=False))
+
+        info = "현재 버전: v%s" % APP_VERSION
+        if self.latest_release and not self.update_available:
+            info += " · 최신"
+        version = parent.addAction(info)
+        version.setEnabled(False)
+        if self.last_update_error and not self.update_available:
+            err = parent.addAction("최근 확인 실패")
+            err.setEnabled(False)
 
     def center_on_screen(self):
         self.snap_to(QtWidgets.QApplication.primaryScreen(), 1, 1)
@@ -940,9 +1118,34 @@ class Tray(QtWidgets.QSystemTrayIcon):
 
     def refresh_icon(self):
         if self.pet.pixmaps:
-            self.setIcon(QtGui.QIcon(self.pet.pixmaps[0][0]))
+            base = QtGui.QIcon(self.pet.pixmaps[0][0])
         else:
-            self.setIcon(self.pet.style().standardIcon(QtWidgets.QStyle.SP_ComputerIcon))
+            base = self.pet.style().standardIcon(QtWidgets.QStyle.SP_ComputerIcon)
+        if self.pet.update_available:
+            self.setIcon(self.with_update_badge(base))
+        else:
+            self.setIcon(base)
+
+    def with_update_badge(self, icon):
+        size = 64
+        base = icon.pixmap(size, size)
+        canvas = QtGui.QPixmap(size, size)
+        canvas.fill(QtCore.Qt.transparent)
+
+        painter = QtGui.QPainter(canvas)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        x = (size - base.width()) // 2
+        y = (size - base.height()) // 2
+        painter.drawPixmap(x, y, base)
+
+        diameter = 18
+        margin = 4
+        rect = QtCore.QRect(size - diameter - margin, margin, diameter, diameter)
+        painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 3))
+        painter.setBrush(QtGui.QBrush(QtGui.QColor(230, 40, 45)))
+        painter.drawEllipse(rect)
+        painter.end()
+        return QtGui.QIcon(canvas)
 
     def on_activated(self, reason):
         self.show_menu()
@@ -969,6 +1172,7 @@ def main():
     tray.refresh_icon()
     pet.prompt_config_notices()
     pet.prompt_if_no_image()
+    pet.schedule_update_check()
     app.pet, app.tray = pet, tray  # 가비지 컬렉션 방지
     sys.exit(app.exec_())
 

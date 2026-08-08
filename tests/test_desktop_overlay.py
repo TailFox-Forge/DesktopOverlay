@@ -94,6 +94,18 @@ def test_transparent_border_is_preserved(overlay_module):
     assert np.array_equal(result, rgba)
 
 
+def test_release_version_compare_handles_v_tags(overlay_module):
+    mod = overlay_module
+
+    assert mod.parse_version("v0.2.1") == (0, 2, 1)
+    assert mod.parse_version("0.10") == (0, 10, 0)
+    assert mod.is_newer_version("v0.2.2", "0.2.1")
+    assert mod.is_newer_version("v0.3.0", "0.2.9")
+    assert not mod.is_newer_version("v0.2.1", "0.2.1")
+    assert not mod.is_newer_version("v0.2.0", "0.2.1")
+    assert not mod.is_newer_version("not-a-version", "0.2.1")
+
+
 def test_anchor_margin_and_click_behavior(qapp, overlay_module):
     mod = overlay_module
     cfg = dict(mod.DEFAULTS)
