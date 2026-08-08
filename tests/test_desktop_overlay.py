@@ -134,6 +134,37 @@ def test_read_frames_limits_gif_frames_and_preserves_duration(overlay_module, tm
     assert all(frame.shape == (8, 8, 4) for frame, _delay in loaded)
 
 
+def test_assign_hotkey_removes_duplicate_and_visibility_conflicts(overlay_module):
+    mod = overlay_module
+    hotkeys = mod.normalize_hotkeys({})
+    hotkeys, messages = mod.assign_hotkey(hotkeys, "show", "Ctrl+Alt+F1")
+    assert hotkeys["show"] == "Ctrl+Alt+F1"
+
+    hotkeys, messages = mod.assign_hotkey(hotkeys, "hide", "Ctrl+Alt+F1")
+    assert hotkeys["show"] == ""
+    assert hotkeys["hide"] == "Ctrl+Alt+F1"
+    assert any("이미 등록된" in message for message in messages)
+
+    hotkeys, messages = mod.assign_hotkey(hotkeys, "toggle_visible", "Ctrl+Alt+F2")
+    assert hotkeys["toggle_visible"] == "Ctrl+Alt+F2"
+    assert hotkeys["hide"] == ""
+    assert any("개별 단축키" in message for message in messages)
+
+
+def test_shortcut_rejects_text_key_without_modifier(overlay_module):
+    mod = overlay_module
+    event = QtGui.QKeyEvent(
+        QtCore.QEvent.KeyPress,
+        QtCore.Qt.Key_A,
+        QtCore.Qt.NoModifier,
+    )
+
+    shortcut, error = mod.shortcut_from_key_event(event)
+
+    assert shortcut is None
+    assert "문자/숫자 단독키" in error
+
+
 def test_anchor_margin_and_click_behavior(qapp, overlay_module):
     mod = overlay_module
     cfg = dict(mod.DEFAULTS)

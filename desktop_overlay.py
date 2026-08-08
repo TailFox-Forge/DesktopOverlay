@@ -24,7 +24,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.2.2"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
@@ -73,7 +73,197 @@ DEFAULTS = {
     "click_through": True,   # 기본: 마우스 통과 (게임 조작 방해 없음)
     "flip": False,
     "topmost": True,         # 기본: 항상 위
+    "hotkeys": {},           # 기본은 전부 미등록. 사용자가 설정창에서 직접 넣는다
+    "hotkeys_enabled": True, # 비활성화 단축키를 누르면 False. 트레이 메뉴로만 다시 켠다
+    "hotkey_screen": "",     # 위치 단축키가 움직일 대상 모니터
 }
+
+SIZE_PRESETS = (25, 50, 75, 100, 150, 200, 300)
+SNAP_SPOTS = (
+    ("좌측 상단", 0, 0, "tl"),
+    ("상단 중앙", 1, 0, "tc"),
+    ("우측 상단", 2, 0, "tr"),
+    ("좌측 중앙", 0, 1, "ml"),
+    ("정중앙", 1, 1, "mc"),
+    ("우측 중앙", 2, 1, "mr"),
+    ("좌측 하단", 0, 2, "bl"),
+    ("하단 중앙", 1, 2, "bc"),
+    ("우측 하단", 2, 2, "br"),
+)
+HOTKEY_ACTIONS = [
+    ("toggle_visible", "보이기/숨기기 토글"),
+    ("show", "보이기"),
+    ("hide", "숨기기"),
+    ("open_image", "이미지 열기"),
+    ("flip", "좌우 반전"),
+    ("topmost", "항상 위"),
+    ("click_through", "클릭 통과"),
+    ("disable_hotkeys", "단축키 전체 비활성화"),
+]
+HOTKEY_ACTIONS += [("scale_%d" % v, "크기 %d%%" % v) for v in SIZE_PRESETS]
+HOTKEY_ACTIONS += [("scale_cycle", "크기 순차 변경")]
+HOTKEY_ACTIONS += [("snap_%s" % code, "위치 %s" % label) for label, _hx, _vy, code in SNAP_SPOTS]
+HOTKEY_LABELS = dict(HOTKEY_ACTIONS)
+HOTKEY_DEFAULTS = {key: "" for key, _label in HOTKEY_ACTIONS}
+HOTKEY_SIZE_COMMANDS = {"scale_%d" % v: v for v in SIZE_PRESETS}
+HOTKEY_SNAP_COMMANDS = {"snap_%s" % code: (label, hx, vy) for label, hx, vy, code in SNAP_SPOTS}
+KEY_NAME_MAP = {
+    QtCore.Qt.Key_Escape: "Esc",
+    QtCore.Qt.Key_Tab: "Tab",
+    QtCore.Qt.Key_Backtab: "Tab",
+    QtCore.Qt.Key_Backspace: "Backspace",
+    QtCore.Qt.Key_Return: "Enter",
+    QtCore.Qt.Key_Enter: "Enter",
+    QtCore.Qt.Key_Insert: "Insert",
+    QtCore.Qt.Key_Delete: "Delete",
+    QtCore.Qt.Key_Pause: "Pause",
+    QtCore.Qt.Key_Print: "PrintScreen",
+    QtCore.Qt.Key_Home: "Home",
+    QtCore.Qt.Key_End: "End",
+    QtCore.Qt.Key_Left: "Left",
+    QtCore.Qt.Key_Up: "Up",
+    QtCore.Qt.Key_Right: "Right",
+    QtCore.Qt.Key_Down: "Down",
+    QtCore.Qt.Key_PageUp: "PageUp",
+    QtCore.Qt.Key_PageDown: "PageDown",
+    QtCore.Qt.Key_Space: "Space",
+}
+VK_SPECIAL_KEYS = {
+    "Esc": 0x1B,
+    "Tab": 0x09,
+    "Backspace": 0x08,
+    "Enter": 0x0D,
+    "Insert": 0x2D,
+    "Delete": 0x2E,
+    "Pause": 0x13,
+    "PrintScreen": 0x2C,
+    "Home": 0x24,
+    "End": 0x23,
+    "Left": 0x25,
+    "Up": 0x26,
+    "Right": 0x27,
+    "Down": 0x28,
+    "PageUp": 0x21,
+    "PageDown": 0x22,
+    "Space": 0x20,
+}
+MODIFIER_KEYS = {
+    QtCore.Qt.Key_Control,
+    QtCore.Qt.Key_Shift,
+    QtCore.Qt.Key_Alt,
+    QtCore.Qt.Key_Meta,
+}
+WM_HOTKEY = 0x0312
+MOD_ALT = 0x0001
+MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
+MOD_WIN = 0x0008
+MOD_NOREPEAT = 0x4000
+
+
+def normalize_hotkeys(value):
+    hotkeys = dict(HOTKEY_DEFAULTS)
+    if isinstance(value, dict):
+        for command, shortcut in value.items():
+            if command in hotkeys and isinstance(shortcut, str):
+                hotkeys[command] = shortcut.strip()
+    return hotkeys
+
+
+def key_name_from_qt(key):
+    if QtCore.Qt.Key_A <= key <= QtCore.Qt.Key_Z:
+        return chr(ord("A") + key - QtCore.Qt.Key_A)
+    if QtCore.Qt.Key_0 <= key <= QtCore.Qt.Key_9:
+        return chr(ord("0") + key - QtCore.Qt.Key_0)
+    if QtCore.Qt.Key_F1 <= key <= QtCore.Qt.Key_F24:
+        return "F%d" % (key - QtCore.Qt.Key_F1 + 1)
+    return KEY_NAME_MAP.get(key)
+
+
+def shortcut_from_key_event(event):
+    key = event.key()
+    if key in MODIFIER_KEYS:
+        return None, "Ctrl, Alt, Shift, Win 만으로는 단축키를 만들 수 없습니다."
+    if key in (QtCore.Qt.Key_Backspace, QtCore.Qt.Key_Delete):
+        return "", None
+
+    key_name = key_name_from_qt(key)
+    if not key_name or key_name in ("Esc", "Tab"):
+        return None, "이 키는 단축키로 사용할 수 없습니다."
+
+    modifiers = event.modifiers()
+    parts = []
+    if modifiers & QtCore.Qt.ControlModifier:
+        parts.append("Ctrl")
+    if modifiers & QtCore.Qt.AltModifier:
+        parts.append("Alt")
+    if modifiers & QtCore.Qt.ShiftModifier:
+        parts.append("Shift")
+    if modifiers & QtCore.Qt.MetaModifier:
+        parts.append("Win")
+
+    if not parts and (len(key_name) == 1 and key_name.isalnum()):
+        return None, "문자/숫자 단독키는 입력을 방해하므로 Ctrl, Alt, Shift, Win 중 하나와 함께 사용하세요."
+    parts.append(key_name)
+    return "+".join(parts), None
+
+
+def hotkey_to_windows(shortcut):
+    parts = [p.strip() for p in str(shortcut or "").split("+") if p.strip()]
+    if not parts:
+        return None
+    modifiers = 0
+    key_name = None
+    for part in parts:
+        lowered = part.lower()
+        if lowered in ("ctrl", "control"):
+            modifiers |= MOD_CONTROL
+        elif lowered == "alt":
+            modifiers |= MOD_ALT
+        elif lowered == "shift":
+            modifiers |= MOD_SHIFT
+        elif lowered in ("win", "meta"):
+            modifiers |= MOD_WIN
+        else:
+            key_name = part
+    if not key_name:
+        return None
+    upper = key_name.upper()
+    if len(upper) == 1 and upper.isalpha():
+        vk = ord(upper)
+    elif len(upper) == 1 and upper.isdigit():
+        vk = ord(upper)
+    elif upper.startswith("F") and upper[1:].isdigit() and 1 <= int(upper[1:]) <= 24:
+        vk = 0x70 + int(upper[1:]) - 1
+    else:
+        vk = VK_SPECIAL_KEYS.get(key_name)
+    if vk is None:
+        return None
+    return modifiers | MOD_NOREPEAT, vk
+
+
+def assign_hotkey(hotkeys, command, shortcut):
+    hotkeys = normalize_hotkeys(hotkeys)
+    shortcut = str(shortcut or "").strip()
+    messages = []
+    if shortcut:
+        for other, existing in list(hotkeys.items()):
+            if other != command and existing.lower() == shortcut.lower():
+                hotkeys[other] = ""
+                messages.append(
+                    "%s에 이미 등록된 %s 단축키를 삭제했습니다."
+                    % (HOTKEY_LABELS.get(other, other), shortcut))
+        if command == "toggle_visible":
+            cleared = [name for name in ("show", "hide") if hotkeys.get(name)]
+            for name in cleared:
+                hotkeys[name] = ""
+            if cleared:
+                messages.append("토글 단축키를 등록해서 보이기/숨기기 개별 단축키를 삭제했습니다.")
+        elif command in ("show", "hide") and hotkeys.get("toggle_visible"):
+            hotkeys["toggle_visible"] = ""
+            messages.append("보이기 또는 숨기기 단축키를 등록해서 토글 단축키를 삭제했습니다.")
+    hotkeys[command] = shortcut
+    return hotkeys, messages
 
 
 def normalize_anchor(value):
@@ -127,6 +317,10 @@ def load_config():
         if os.path.exists(CONFIG_PATH):
             add_config_notice("설정을 읽지 못해 기본값으로 시작했습니다.\n%s" % CONFIG_PATH)
     cfg["anchor"] = normalize_anchor(cfg.get("anchor"))
+    cfg["hotkeys"] = normalize_hotkeys(cfg.get("hotkeys"))
+    cfg["hotkeys_enabled"] = bool(cfg.get("hotkeys_enabled", True))
+    if not isinstance(cfg.get("hotkey_screen"), str):
+        cfg["hotkey_screen"] = ""
     return cfg
 
 
@@ -550,6 +744,232 @@ class SizeDialog(QtWidgets.QDialog):
         return self.w_box.value(), self.h_box.value()
 
 
+class HotkeyManager(QtCore.QAbstractNativeEventFilter):
+    def __init__(self, pet):
+        super().__init__()
+        self.pet = pet
+        self.registered = {}
+        self.installed = False
+        self.next_id = 7100
+
+    def register_all(self, hotkeys):
+        if os.name != "nt":
+            return []
+        self.unregister_all()
+        app = QtCore.QCoreApplication.instance()
+        if app and not self.installed:
+            app.installNativeEventFilter(self)
+            self.installed = True
+
+        errors = []
+        for command, shortcut in normalize_hotkeys(hotkeys).items():
+            if not shortcut:
+                continue
+            parsed = hotkey_to_windows(shortcut)
+            if not parsed:
+                errors.append("%s: 지원하지 않는 단축키(%s)" % (
+                    HOTKEY_LABELS.get(command, command), shortcut))
+                continue
+            modifiers, vk = parsed
+            hotkey_id = self.next_id
+            self.next_id += 1
+            if not ctypes.windll.user32.RegisterHotKey(None, hotkey_id, modifiers, vk):
+                errors.append("%s: 다른 프로그램이 사용 중이거나 Windows에서 거부했습니다(%s)" % (
+                    HOTKEY_LABELS.get(command, command), shortcut))
+                continue
+            self.registered[hotkey_id] = command
+        return errors
+
+    def unregister_all(self):
+        if os.name == "nt":
+            for hotkey_id in list(self.registered):
+                ctypes.windll.user32.UnregisterHotKey(None, hotkey_id)
+        self.registered.clear()
+
+    def nativeEventFilter(self, event_type, message):
+        if event_type not in (b"windows_generic_MSG", b"windows_dispatcher_MSG",
+                              "windows_generic_MSG", "windows_dispatcher_MSG"):
+            return False, 0
+        msg = ctypes.wintypes.MSG.from_address(int(message))
+        if msg.message != WM_HOTKEY:
+            return False, 0
+        command = self.registered.get(int(msg.wParam))
+        if not command:
+            return False, 0
+        QtCore.QTimer.singleShot(0, lambda c=command: self.pet.execute_hotkey(c))
+        return True, 0
+
+
+class HotkeyCaptureButton(QtWidgets.QPushButton):
+    captured = QtCore.pyqtSignal(str, str, str)
+
+    def __init__(self, command, parent=None):
+        super().__init__(parent)
+        self.command = command
+        self.shortcut = ""
+        self.capturing = False
+        self.clicked.connect(self.start_capture)
+        self.setMinimumWidth(150)
+        self.refresh()
+
+    def set_shortcut(self, shortcut):
+        self.shortcut = shortcut or ""
+        self.refresh()
+
+    def refresh(self):
+        if self.capturing:
+            self.setText("키를 누르세요...")
+        else:
+            self.setText(self.shortcut or "미등록")
+
+    def start_capture(self):
+        self.capturing = True
+        self.setFocus(QtCore.Qt.MouseFocusReason)
+        self.refresh()
+
+    def keyPressEvent(self, event):
+        if not self.capturing:
+            super().keyPressEvent(event)
+            return
+        if event.key() == QtCore.Qt.Key_Escape:
+            self.capturing = False
+            self.refresh()
+            return
+        shortcut, error = shortcut_from_key_event(event)
+        self.capturing = False
+        self.refresh()
+        self.captured.emit(self.command, shortcut or "", error or "")
+
+
+class HotkeyDialog(QtWidgets.QDialog):
+    def __init__(self, pet):
+        super().__init__(None)
+        self.pet = pet
+        self.hotkeys = normalize_hotkeys(pet.cfg.get("hotkeys"))
+        self.buttons = {}
+        self.setWindowTitle("단축키 설정")
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowStaysOnTopHint)
+        self.resize(640, 720)
+
+        root = QtWidgets.QVBoxLayout(self)
+        hint = QtWidgets.QLabel(
+            "단축키 버튼을 누른 뒤 원하는 키를 입력하세요. 기본값은 모두 미등록입니다.")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+
+        self.screen_combo = QtWidgets.QComboBox()
+        self.populate_screens()
+        screen_row = QtWidgets.QHBoxLayout()
+        screen_row.addWidget(QtWidgets.QLabel("위치 단축키 대상 모니터"))
+        screen_row.addWidget(self.screen_combo, 1)
+        root.addLayout(screen_row)
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        body = QtWidgets.QWidget()
+        body_layout = QtWidgets.QVBoxLayout(body)
+        self.add_group(body_layout, "표시", ["toggle_visible", "show", "hide"])
+        self.add_group(body_layout, "이미지/창", [
+            "open_image", "flip", "topmost", "click_through", "disable_hotkeys"])
+        self.add_group(
+            body_layout,
+            "크기",
+            ["scale_%d" % v for v in SIZE_PRESETS] + ["scale_cycle"])
+        self.add_group(body_layout, "위치", ["snap_%s" % code for _label, _hx, _vy, code in SNAP_SPOTS])
+        body_layout.addStretch(1)
+        scroll.setWidget(body)
+        root.addWidget(scroll, 1)
+
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        reset = buttons.addButton("전체 초기화", QtWidgets.QDialogButtonBox.ResetRole)
+        reset.clicked.connect(self.reset_all)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+        self.center_on_primary()
+
+    def populate_screens(self):
+        selected = self.pet.cfg.get("hotkey_screen") or ""
+        primary = QtWidgets.QApplication.primaryScreen()
+        for index, screen in enumerate(QtWidgets.QApplication.screens(), start=1):
+            g = screen.geometry()
+            label = "%s 모니터 %d (%dx%d)" % (
+                "주" if screen == primary else "보조", index, g.width(), g.height())
+            self.screen_combo.addItem(label, screen.name())
+            if selected and screen.name() == selected:
+                self.screen_combo.setCurrentIndex(self.screen_combo.count() - 1)
+        if not selected and primary:
+            for i in range(self.screen_combo.count()):
+                if self.screen_combo.itemData(i) == primary.name():
+                    self.screen_combo.setCurrentIndex(i)
+                    break
+
+    def add_group(self, layout, title, commands):
+        group = QtWidgets.QGroupBox(title)
+        form = QtWidgets.QGridLayout(group)
+        form.setColumnStretch(1, 1)
+        for row, command in enumerate(commands):
+            form.addWidget(QtWidgets.QLabel(HOTKEY_LABELS[command]), row, 0)
+            capture = HotkeyCaptureButton(command)
+            capture.set_shortcut(self.hotkeys.get(command, ""))
+            capture.captured.connect(self.on_captured)
+            self.buttons[command] = capture
+            form.addWidget(capture, row, 1)
+            clear = QtWidgets.QPushButton("삭제")
+            clear.clicked.connect(lambda _=False, c=command: self.set_hotkey(c, ""))
+            form.addWidget(clear, row, 2)
+        layout.addWidget(group)
+
+    def on_captured(self, command, shortcut, error):
+        if error:
+            QtWidgets.QMessageBox.warning(self, "단축키 설정 불가", error)
+            return
+        self.set_hotkey(command, shortcut)
+
+    def set_hotkey(self, command, shortcut):
+        self.hotkeys, messages = assign_hotkey(self.hotkeys, command, shortcut)
+        if command == "disable_hotkeys" and shortcut:
+            messages.append(
+                "이 단축키를 누르면 모든 단축키가 비활성화됩니다. 다시 켜려면 트레이 메뉴에서 단축키 활성화를 선택하세요.")
+        self.sync_buttons()
+        if messages:
+            QtWidgets.QMessageBox.information(self, "단축키 정리", "\n".join(messages))
+
+    def sync_buttons(self):
+        for command, button in self.buttons.items():
+            button.set_shortcut(self.hotkeys.get(command, ""))
+
+    def reset_all(self):
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "전체 초기화",
+            "등록된 단축키를 모두 삭제할까요?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No)
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.hotkeys = dict(HOTKEY_DEFAULTS)
+            self.sync_buttons()
+
+    def selected_screen_name(self):
+        return self.screen_combo.currentData() or ""
+
+    def accept(self):
+        self.pet.cfg["hotkeys"] = normalize_hotkeys(self.hotkeys)
+        self.pet.cfg["hotkey_screen"] = self.selected_screen_name()
+        self.pet.persist()
+        self.pet.register_hotkeys(show_errors=True)
+        super().accept()
+
+    def center_on_primary(self):
+        screen = QtWidgets.QApplication.primaryScreen()
+        if not screen:
+            return
+        self.adjustSize()
+        geo = screen.availableGeometry()
+        self.move(geo.center() - self.rect().center())
+
+
 class Pet(QtWidgets.QWidget):
     def __init__(self, cfg):
         super().__init__()
@@ -571,6 +991,7 @@ class Pet(QtWidgets.QWidget):
         self.latest_release = None
         self.last_update_error = ""
         self.tray = None
+        self.hotkey_manager = HotkeyManager(self)
         self.hidden = False      # 숨김 상태는 저장하지 않는다. 다음 실행 때는 항상 보인다
         self.need_image = None   # None / "first" / "missing"
         self.missing_image_path = None
@@ -629,7 +1050,10 @@ class Pet(QtWidgets.QWidget):
 
     def toggle_visible(self):
         """방송 중 즉시 감추기. 트레이 아이콘은 남아 있어 언제든 되돌릴 수 있다."""
-        self.hidden = not self.hidden
+        self.set_visible_state(self.hidden)
+
+    def set_visible_state(self, visible):
+        self.hidden = not bool(visible)
         if self.hidden:
             self.hide()
         else:
@@ -984,6 +1408,10 @@ class Pet(QtWidgets.QWidget):
         self.add_update_menu(m)
         m.addSeparator()
         m.addAction("이미지 열기…", self.pick_file)
+        hotkeys_enabled = bool(self.cfg.get("hotkeys_enabled", True))
+        m.addAction("단축키 비활성화" if hotkeys_enabled else "단축키 활성화",
+                    self.toggle_hotkeys_enabled)
+        m.addAction("단축키 설정…", self.open_hotkey_dialog)
         m.addAction("배경 색 다시 잡기", self.reauto_bg)
         m.addAction("배경 색 직접 고르기…", self.pick_bg_color)
         m.addSeparator()
@@ -1018,7 +1446,7 @@ class Pet(QtWidgets.QWidget):
             a.triggered.connect(lambda _, v=v: self.set_opacity(v / 100.0))
 
         sub = m.addMenu("크기: %d x %d" % (self.width(), self.height()))
-        for v in (25, 50, 75, 100, 150, 200, 300):
+        for v in SIZE_PRESETS:
             a = sub.addAction("%d%%" % v)
             a.triggered.connect(lambda _, v=v: self.set_scale(v / 100.0))
         sub.addSeparator()
@@ -1042,6 +1470,10 @@ class Pet(QtWidgets.QWidget):
         self.add_position_menu(m)
         m.addAction("종료", QtWidgets.QApplication.quit)
         return m
+
+    def open_hotkey_dialog(self):
+        dlg = HotkeyDialog(self)
+        dlg.exec_()
 
     def add_update_menu(self, parent):
         if self.update_available and self.latest_release:
@@ -1112,10 +1544,6 @@ class Pet(QtWidgets.QWidget):
         primary = QtWidgets.QApplication.primaryScreen()
         here = self.screen_of_window()
 
-        spots = (("좌측 상단", 0, 0), ("상단 중앙", 1, 0), ("우측 상단", 2, 0),
-                 ("좌측 중앙", 0, 1), ("정중앙", 1, 1), ("우측 중앙", 2, 1),
-                 ("좌측 하단", 0, 2), ("하단 중앙", 1, 2), ("우측 하단", 2, 2))
-
         anchor = self.cfg.get("anchor") or {}
         root = parent.addMenu("위치 바로가기")
         for i, sc in enumerate(screens, start=1):
@@ -1124,7 +1552,7 @@ class Pet(QtWidgets.QWidget):
                 "주" if sc == primary else "보조", i, g.width(), g.height(),
                 "  ← 현재" if sc == here else "")
             sub = root.addMenu(label)
-            for text, hx, vy in spots:
+            for text, hx, vy, _code in SNAP_SPOTS:
                 fixed = (anchor.get("screen") == sc.name()
                          and anchor.get("hx") == hx and anchor.get("vy") == vy)
                 a = sub.addAction(text + ("  ← 고정됨" if fixed else ""))
@@ -1169,6 +1597,14 @@ class Pet(QtWidgets.QWidget):
         self.apply_scale()
         self.persist()
 
+    def cycle_scale(self):
+        current = int(round(float(self.cfg.get("scale", 1.0)) * 100))
+        for value in SIZE_PRESETS:
+            if value > current:
+                self.set_scale(value / 100.0)
+                return
+        self.set_scale(SIZE_PRESETS[0] / 100.0)
+
     def toggle(self, key):
         self.cfg[key] = not self.cfg[key]
         if key in ("topmost", "click_through", "capturable"):
@@ -1198,6 +1634,77 @@ class Pet(QtWidgets.QWidget):
         self.cfg["x"], self.cfg["y"] = self.x(), self.y()
         save_config(self.cfg)
         self.prompt_config_notices()
+
+    def hotkey_target_screen(self):
+        wanted = self.cfg.get("hotkey_screen") or ""
+        for screen in QtWidgets.QApplication.screens():
+            if screen.name() == wanted:
+                return screen
+        return QtWidgets.QApplication.primaryScreen()
+
+    def execute_hotkey(self, command):
+        if command == "toggle_visible":
+            self.toggle_visible()
+        elif command == "show":
+            self.set_visible_state(True)
+        elif command == "hide":
+            self.set_visible_state(False)
+        elif command == "open_image":
+            self.pick_file()
+        elif command in ("flip", "topmost", "click_through"):
+            self.toggle(command)
+        elif command == "disable_hotkeys":
+            self.set_hotkeys_enabled(False, notify=True)
+        elif command == "scale_cycle":
+            self.cycle_scale()
+        elif command in HOTKEY_SIZE_COMMANDS:
+            self.set_scale(HOTKEY_SIZE_COMMANDS[command] / 100.0)
+        elif command in HOTKEY_SNAP_COMMANDS:
+            _label, hx, vy = HOTKEY_SNAP_COMMANDS[command]
+            screen = self.hotkey_target_screen()
+            if screen:
+                self.snap_to(screen, hx, vy)
+
+    def register_hotkeys(self, show_errors=False):
+        self.hotkey_manager.unregister_all()
+        if not self.cfg.get("hotkeys_enabled", True):
+            return []
+        errors = self.hotkey_manager.register_all(self.cfg.get("hotkeys", {}))
+        if errors and show_errors:
+            message = "\n".join(errors[:6])
+            if len(errors) > 6:
+                message += "\n외 %d개" % (len(errors) - 6)
+            if self.tray:
+                self.tray.showMessage("단축키 등록 실패", message, QtWidgets.QSystemTrayIcon.Warning, 10000)
+            else:
+                QtWidgets.QMessageBox.warning(None, "단축키 등록 실패", message)
+        return errors
+
+    def unregister_hotkeys(self):
+        self.hotkey_manager.unregister_all()
+
+    def set_hotkeys_enabled(self, enabled, notify=False):
+        self.cfg["hotkeys_enabled"] = bool(enabled)
+        if enabled:
+            errors = self.register_hotkeys(show_errors=True)
+            if notify and self.tray and not errors:
+                self.tray.showMessage(
+                    "단축키 활성화",
+                    "등록된 전역 단축키를 다시 활성화했습니다.",
+                    QtWidgets.QSystemTrayIcon.Information,
+                    5000)
+        else:
+            self.unregister_hotkeys()
+            if notify and self.tray:
+                self.tray.showMessage(
+                    "단축키 비활성화",
+                    "전역 단축키를 모두 비활성화했습니다.\n다시 사용하려면 트레이 메뉴에서 단축키 활성화를 선택하세요.",
+                    QtWidgets.QSystemTrayIcon.Warning,
+                    10000)
+        self.persist()
+
+    def toggle_hotkeys_enabled(self):
+        self.set_hotkeys_enabled(not bool(self.cfg.get("hotkeys_enabled", True)), notify=True)
 
 
 class Tray(QtWidgets.QSystemTrayIcon):
@@ -1265,9 +1772,11 @@ def main():
     tray = Tray(pet)
     pet.tray = tray
     tray.refresh_icon()
+    pet.register_hotkeys(show_errors=True)
     pet.prompt_config_notices()
     pet.prompt_if_no_image()
     pet.schedule_update_check()
+    app.aboutToQuit.connect(pet.unregister_hotkeys)
     app.pet, app.tray = pet, tray  # 가비지 컬렉션 방지
     sys.exit(app.exec_())
 
