@@ -43,6 +43,7 @@ DEFAULTS = {
     "holes": True,       # 캐릭터에 둘러싸인 배경색 덩어리도 제거
     "auto_bg": True,     # 모서리에서 배경색 자동 추출
     "bg_color": [255, 255, 255],
+    "opacity": 1.0,          # 창 전체 불투명도 0.1~1.0 (배경 제거와는 별개)
     "capturable": False,     # True 면 OBS/PRISM 윈도우 캡처 목록에 표시된다
     "snap_margin": 0,        # 구석으로 보낼 때 띄울 여백(px)
     "chroma_bg": None,       # [r,g,b] 이면 창을 그 색으로 채운다 (윈도우 캡처 + 컬러키용)
@@ -318,6 +319,7 @@ class Pet(QtWidgets.QWidget):
         self.base_size = (200, 200)
         self._drag = None
         self.tray = None
+        self.hidden = False      # 숨김 상태는 저장하지 않는다. 다음 실행 때는 항상 보인다
 
         self.setWindowTitle(APP_NAME)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
@@ -345,8 +347,26 @@ class Pet(QtWidgets.QWidget):
         if self.cfg["topmost"]:
             flags |= QtCore.Qt.WindowStaysOnTopHint
         self.setWindowFlags(flags)
-        self.show()
-        self.raise_()
+        if not self.hidden:
+            self.show()
+            self.raise_()
+        self.setWindowOpacity(float(self.cfg.get("opacity", 1.0)))
+
+    def toggle_visible(self):
+        """방송 중 즉시 감추기. 트레이 아이콘은 남아 있어 언제든 되돌릴 수 있다."""
+        self.hidden = not self.hidden
+        if self.hidden:
+            self.hide()
+        else:
+            self.show()
+            self.raise_()
+        if self.tray:
+            self.tray.setToolTip("%s (%s)" % (APP_NAME, "숨김" if self.hidden else "표시 중"))
+
+    def set_opacity(self, v):
+        self.cfg["opacity"] = v
+        self.setWindowOpacity(v)
+        self.persist()
 
     def nativeEvent(self, event_type, message):
         """클릭 통과: WM_NCHITTEST 에 HTTRANSPARENT 를 돌려주면 마우스가 아래 창으로 넘어간다.
@@ -487,6 +507,8 @@ class Pet(QtWidgets.QWidget):
 
     def build_menu(self):
         m = QtWidgets.QMenu(self)
+        m.addAction("보이기" if self.hidden else "숨기기", self.toggle_visible)
+        m.addSeparator()
         m.addAction("이미지 열기…", self.pick_file)
         m.addAction("배경 색 다시 잡기", self.reauto_bg)
         m.addAction("배경 색 직접 고르기…", self.pick_bg_color)
@@ -515,6 +537,11 @@ class Pet(QtWidgets.QWidget):
                            ("파랑 (0,71,187)", [0, 71, 187])):
             a = sub.addAction(label + ("  ←" if (col or None) == (cur or None) else ""))
             a.triggered.connect(lambda _, c=col: self.set_chroma(c))
+
+        sub = m.addMenu("투명도: %d%%" % round(self.cfg.get("opacity", 1.0) * 100))
+        for v in (100, 90, 75, 60, 40, 25, 10):
+            a = sub.addAction("%d%%%s" % (v, "  ←" if abs(self.cfg.get("opacity", 1.0) - v / 100.0) < 0.01 else ""))
+            a.triggered.connect(lambda _, v=v: self.set_opacity(v / 100.0))
 
         sub = m.addMenu("크기: %d x %d" % (self.width(), self.height()))
         for v in (25, 50, 75, 100, 150, 200, 300):
