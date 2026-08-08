@@ -51,6 +51,7 @@ DEFAULTS = {
     "bg_color": [255, 255, 255],
     "opacity": 1.0,          # 창 전체 불투명도 0.1~1.0 (배경 제거와는 별개)
     "capturable": False,     # True 면 OBS/PRISM 윈도우 캡처 목록에 표시된다
+    "anchor": None,          # 위치 바로가기로 옮겼을 때 {"screen","hx","vy"}. 직접 끌면 None
     "snap_margin": 0,        # 구석으로 보낼 때 띄울 여백(px)
     "chroma_bg": None,       # [r,g,b] 이면 창을 그 색으로 채운다 (윈도우 캡처 + 컬러키용)
     "click_through": True,   # 기본: 마우스 통과 (게임 조작 방해 없음)
@@ -327,6 +328,7 @@ class Pet(QtWidgets.QWidget):
         self.tray = None
         self.hidden = False      # 숨김 상태는 저장하지 않는다. 다음 실행 때는 항상 보인다
         self.need_image = None   # None / "first" / "missing"
+        self.ready = False       # 초기화 중에는 위치 보정을 하지 않는다
 
         self.setWindowTitle(APP_NAME)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
@@ -345,6 +347,11 @@ class Pet(QtWidgets.QWidget):
             self.need_image = "missing"
         else:
             self.load_image(cfg["path"])
+
+        self.ready = True
+        # 저장된 위치를 복원한다. 바로가기로 옮겨 둔 상태면 그 구석으로 다시 붙는다
+        if cfg.get("anchor"):
+            self.restore_position()
         self.persist()   # 첫 실행에서도 설정 파일이 생기도록
 
     # ---- 창 속성
@@ -461,6 +468,11 @@ class Pet(QtWidgets.QWidget):
             self.timer.start(self.pixmaps[0][1])
 
     def apply_scale(self):
+        # QRect.center() 는 정수로 내림해서 크기를 바꿀 때마다 1px 씩 밀린다.
+        # 실수로 중심을 잡아야 반복해서 조절해도 제자리에 머문다.
+        old_center = None
+        if self.ready:
+            old_center = (self.x() + self.width() / 2.0, self.y() + self.height() / 2.0)
         size = self.cfg.get("size")
         if size:
             w, h = int(size[0]), int(size[1])
@@ -468,6 +480,8 @@ class Pet(QtWidgets.QWidget):
             w = int(self.base_size[0] * self.cfg["scale"])
             h = int(self.base_size[1] * self.cfg["scale"])
         self.resize(max(MIN_SIZE, w), max(MIN_SIZE, h))
+        if self.ready:
+            self.restore_position(old_center)
         self.update()
 
     def set_pixel_size(self, w, h):
@@ -521,6 +535,9 @@ class Pet(QtWidgets.QWidget):
             e.accept()
 
     def mouseReleaseEvent(self, e):
+        if self._drag is not None:
+            # 직접 끌어다 놓았으면 커스텀 위치다. 구석 기억을 버린다
+            self.cfg["anchor"] = None
         self._drag = None
         self.persist()
 
@@ -610,7 +627,7 @@ class Pet(QtWidgets.QWidget):
     def center_on_screen(self):
         self.snap_to(QtWidgets.QApplication.primaryScreen(), 1, 1)
 
-    def snap_to(self, screen, hx, vy):
+    def snap_to(self, screen, hx, vy, remember=True):
         """지정한 모니터의 구석으로 옮긴다. hx/vy: 0=시작, 1=가운데, 2=끝.
         작업표시줄을 침범하지 않도록 availableGeometry 를 쓴다."""
         g = screen.availableGeometry()
@@ -619,6 +636,37 @@ class Pet(QtWidgets.QWidget):
         y = (g.top() + m, g.center().y() - self.height() // 2, g.bottom() - self.height() + 1 - m)[vy]
         self.move(int(x), int(y))
         self.raise_()
+        if remember:
+            # 이미지나 크기가 바뀌어도 같은 구석으로 다시 붙도록 기억해 둔다
+            self.cfg["anchor"] = {"screen": screen.name(), "hx": hx, "vy": vy}
+        self.persist()
+
+    def anchored_screen(self):
+        """기억해 둔 모니터를 찾는다. 분리되었으면 현재 모니터로 대체."""
+        a = self.cfg.get("anchor")
+        if not a:
+            return None
+        for sc in QtWidgets.QApplication.screens():
+            if sc.name() == a.get("screen"):
+                return sc
+        return self.screen_of_window()
+
+    def restore_position(self, old_center=None):
+        """이미지나 크기가 바뀐 뒤 위치를 되돌린다.
+
+        위치 바로가기로 옮겨 둔 상태면 그 구석으로 다시 붙이고,
+        직접 끌어다 놓은 상태면 중심 좌표를 유지한다.
+
+        old_center 는 (x, y) 실수 좌표."""
+        a = self.cfg.get("anchor")
+        sc = self.anchored_screen()
+        if a and sc:
+            self.snap_to(sc, a["hx"], a["vy"], remember=False)
+            return
+        if old_center is None:
+            return
+        self.move(int(round(old_center[0] - self.width() / 2.0)),
+                  int(round(old_center[1] - self.height() / 2.0)))
         self.persist()
 
     def add_position_menu(self, parent):
@@ -630,6 +678,7 @@ class Pet(QtWidgets.QWidget):
                  ("좌측 중앙", 0, 1), ("정중앙", 1, 1), ("우측 중앙", 2, 1),
                  ("좌측 하단", 0, 2), ("하단 중앙", 1, 2), ("우측 하단", 2, 2))
 
+        anchor = self.cfg.get("anchor") or {}
         root = parent.addMenu("위치 바로가기")
         for i, sc in enumerate(screens, start=1):
             g = sc.geometry()
@@ -638,14 +687,22 @@ class Pet(QtWidgets.QWidget):
                 "  ← 현재" if sc == here else "")
             sub = root.addMenu(label)
             for text, hx, vy in spots:
-                a = sub.addAction(text)
+                fixed = (anchor.get("screen") == sc.name()
+                         and anchor.get("hx") == hx and anchor.get("vy") == vy)
+                a = sub.addAction(text + ("  ← 고정됨" if fixed else ""))
                 a.triggered.connect(lambda _, s=sc, h=hx, v=vy: self.snap_to(s, h, v))
 
         root.addSeparator()
+        if anchor:
+            root.addAction("구석 고정 해제 (지금 위치 유지)", self.clear_anchor)
         mm = root.addMenu("구석 여백: %dpx" % self.cfg.get("snap_margin", 0))
         for v in (0, 10, 20, 40, 80):
             a = mm.addAction("%dpx%s" % (v, "  ←" if v == self.cfg.get("snap_margin", 0) else ""))
             a.triggered.connect(lambda _, v=v: self.set_margin(v))
+
+    def clear_anchor(self):
+        self.cfg["anchor"] = None
+        self.persist()
 
     def set_margin(self, v):
         self.cfg["snap_margin"] = v
