@@ -12,15 +12,15 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.2.1** 입니다.
+현재 최신 릴리스는 **v0.2.2** 입니다.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.2.1/Desktop_Overlay_Start.exe)
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.2.2/Desktop_Overlay_Start.exe)
 
 ```text
-SHA256: fe6ae8563449137b1d64fff41c8b162cdf574486e593ee1120d2bc56b7978c39
+SHA256: 82b407070289b45dfe6d419afd3f83e545bf9ef4a6bf2ca0c51b3c7862387080
 ```
 
-v0.2.1에서는 트레이 메뉴에 업데이트 확인을 추가하고, 새 릴리스가 있으면 트레이 아이콘에 빨간점을 표시합니다.
+v0.2.2에서는 대형 GIF 프레임 제한 정책, GIF 회귀 테스트, 전역 단축키 설정창을 추가했습니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
