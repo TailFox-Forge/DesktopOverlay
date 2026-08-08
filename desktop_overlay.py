@@ -60,14 +60,33 @@ DEFAULTS = {
 }
 
 
+def normalize_anchor(value):
+    """anchor 는 None 또는 {"screen": str, "hx": 0..2, "vy": 0..2} 만 허용한다.
+    설정 파일은 사용자가 직접 고칠 수 있으므로 어떤 값이 와도 시작을 막으면 안 된다."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        hx = int(value["hx"])
+        vy = int(value["vy"])
+        screen = value["screen"]
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not isinstance(screen, str) or not (0 <= hx <= 2 and 0 <= vy <= 2):
+        return None
+    return {"screen": screen, "hx": hx, "vy": vy}
+
+
 def load_config():
     cfg = dict(DEFAULTS)
     try:
         # utf-8-sig: 메모장이나 PowerShell 이 붙인 BOM 이 있어도 읽는다
         with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
-            cfg.update(json.load(f))
+            data = json.load(f)
+        if isinstance(data, dict):
+            cfg.update(data)
     except Exception:
         pass
+    cfg["anchor"] = normalize_anchor(cfg.get("anchor"))
     return cfg
 
 
