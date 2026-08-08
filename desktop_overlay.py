@@ -43,6 +43,7 @@ DEFAULTS = {
     "holes": True,       # 캐릭터에 둘러싸인 배경색 덩어리도 제거
     "auto_bg": True,     # 모서리에서 배경색 자동 추출
     "bg_color": [255, 255, 255],
+    "capturable": False,     # True 면 OBS/PRISM 윈도우 캡처 목록에 표시된다
     "snap_margin": 0,        # 구석으로 보낼 때 띄울 여백(px)
     "chroma_bg": None,       # [r,g,b] 이면 창을 그 색으로 채운다 (윈도우 캡처 + 컬러키용)
     "click_through": True,   # 기본: 마우스 통과 (게임 조작 방해 없음)
@@ -54,7 +55,8 @@ DEFAULTS = {
 def load_config():
     cfg = dict(DEFAULTS)
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        # utf-8-sig: 메모장이나 PowerShell 이 붙인 BOM 이 있어도 읽는다
+        with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
             cfg.update(json.load(f))
     except Exception:
         pass
@@ -333,7 +335,13 @@ class Pet(QtWidgets.QWidget):
 
     # ---- 창 속성
     def apply_window_flags(self):
-        flags = QtCore.Qt.FramelessWindowHint | QtCore.Qt.Tool
+        flags = QtCore.Qt.FramelessWindowHint
+        if self.cfg.get("capturable"):
+            # 일반 창(WS_EX_TOOLWINDOW 없음)이라야 OBS/PRISM 윈도우 캡처 목록에 뜬다.
+            # 대신 작업표시줄에도 항목이 생긴다.
+            flags |= QtCore.Qt.Window
+        else:
+            flags |= QtCore.Qt.Tool
         if self.cfg["topmost"]:
             flags |= QtCore.Qt.WindowStaysOnTopHint
         self.setWindowFlags(flags)
@@ -516,7 +524,8 @@ class Pet(QtWidgets.QWidget):
         sub.addAction("직접 입력…", self.ask_size)
         m.addSeparator()
 
-        for key, text in (("remove_bg", "배경 제거 (끄면 원본 그대로)"),
+        for key, text in (("capturable", "윈도우 캡처 목록에 표시 (방송용)"),
+                          ("remove_bg", "배경 제거 (끄면 원본 그대로)"),
                           ("edge_only", "외곽선 바깥만 제거 (캐릭터 색 보호)"),
                           ("holes", "둘러싸인 배경도 제거 (선명한 단색 배경만)"),
                           ("despill", "테두리 배경색 물빠짐 제거"),
@@ -599,7 +608,7 @@ class Pet(QtWidgets.QWidget):
 
     def toggle(self, key):
         self.cfg[key] = not self.cfg[key]
-        if key in ("topmost", "click_through"):
+        if key in ("topmost", "click_through", "capturable"):
             self.apply_window_flags()
         elif key in ("despill", "edge_only", "holes", "remove_bg"):
             self.rebuild()
