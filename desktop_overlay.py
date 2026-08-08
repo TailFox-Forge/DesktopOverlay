@@ -28,6 +28,7 @@ APP_VERSION = "0.2.1"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
+RESAMPLE_LANCZOS = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
 
 # PyInstaller onefile 로 묶으면 __file__ 은 임시 압축 해제 폴더를 가리킨다.
 # 설정은 exe 가 놓인 폴더에 저장해야 다음 실행 때 남아 있다.
@@ -44,6 +45,9 @@ CONFIG_NOTICES = []
 IMAGE_FILTER = "이미지 (*.gif *.png *.jpg *.jpeg *.webp *.bmp);;모든 파일 (*.*)"
 MIN_SIZE = 48      # 이보다 작아지면 우클릭 메뉴조차 열기 어려워진다
 MAX_SIZE = 4000
+MAX_FRAME_PIXELS = 4_000_000
+MAX_GIF_FRAMES = 180
+MAX_GIF_TOTAL_PIXELS = 100_000_000
 PROCESSING_TOOLTIP = "%s - 이미지 처리 중..." % APP_NAME
 
 DEFAULTS = {
@@ -202,13 +206,60 @@ def fetch_latest_release():
 
 # ---------------------------------------------------------------- 이미지 처리
 
-def read_frames(path):
+def fit_size_within_pixels(width, height, max_pixels=MAX_FRAME_PIXELS):
+    pixels = max(1, int(width) * int(height))
+    if pixels <= max_pixels:
+        return int(width), int(height)
+    scale = (float(max_pixels) / float(pixels)) ** 0.5
+    return max(1, int(round(width * scale))), max(1, int(round(height * scale)))
+
+
+def frame_limit_for_image(width, height):
+    pixels = max(1, int(width) * int(height))
+    pixel_limited = max(1, MAX_GIF_TOTAL_PIXELS // pixels)
+    return max(1, min(MAX_GIF_FRAMES, pixel_limited))
+
+
+def selected_frame_indices(total_frames, frame_limit):
+    total_frames = int(total_frames or 0)
+    frame_limit = max(1, int(frame_limit or 1))
+    if total_frames <= 0:
+        return set()
+    if total_frames <= frame_limit:
+        return set(range(total_frames))
+    if frame_limit == 1:
+        return {0}
+    return {
+        int(round(i * (total_frames - 1) / float(frame_limit - 1)))
+        for i in range(frame_limit)
+    }
+
+
+def frame_to_array(image, metadata=None):
+    original_size = image.size
+    target_size = fit_size_within_pixels(original_size[0], original_size[1])
+    if target_size != original_size:
+        image = image.resize(target_size, RESAMPLE_LANCZOS)
+        if metadata is not None:
+            metadata["downsized"] = True
+            metadata["original_size"] = list(original_size)
+            metadata["stored_size"] = list(target_size)
+    return np.array(image)
+
+
+def read_frames(path, metadata=None):
     """어떤 이미지든 (RGBA numpy 배열, 지속시간ms) 목록으로 읽는다."""
     im = Image.open(path)
     frames = []
     if getattr(im, "is_animated", False):
         last = None
-        for frame in ImageSequence.Iterator(im):
+        total = int(getattr(im, "n_frames", 0) or 0)
+        frame_limit = frame_limit_for_image(im.size[0], im.size[1])
+        selected = selected_frame_indices(total, frame_limit) if total else None
+        pending_delay = 0
+        source_count = 0
+        for index, frame in enumerate(ImageSequence.Iterator(im)):
+            source_count += 1
             cur = frame.convert("RGBA")
             if last is not None and frame.tile:
                 # 부분 갱신 프레임이면 이전 프레임 위에 합성
@@ -217,9 +268,28 @@ def read_frames(path):
                 cur = merged
             last = cur
             delay = frame.info.get("duration", 100) or 100
-            frames.append((np.array(cur), max(20, int(delay))))
+            delay = max(20, int(delay))
+            if selected is None or index in selected:
+                frames.append((frame_to_array(cur, metadata), pending_delay + delay))
+                pending_delay = 0
+            else:
+                pending_delay += delay
+        if pending_delay and frames:
+            frame, delay = frames[-1]
+            frames[-1] = (frame, delay + pending_delay)
+        if metadata is not None:
+            metadata["source_frame_count"] = source_count
+            metadata["stored_frame_count"] = len(frames)
+            metadata["frame_limit"] = frame_limit
+            metadata["dropped_frames"] = max(0, source_count - len(frames))
+            metadata["source_pixels"] = int(im.size[0]) * int(im.size[1])
+            metadata["total_pixel_limit"] = MAX_GIF_TOTAL_PIXELS
     else:
-        frames.append((np.array(im.convert("RGBA")), 100))
+        frames.append((frame_to_array(im.convert("RGBA"), metadata), 100))
+        if metadata is not None:
+            metadata["source_frame_count"] = 1
+            metadata["stored_frame_count"] = 1
+            metadata["dropped_frames"] = 0
     return frames
 
 
@@ -384,7 +454,8 @@ class ImageProcessWorker(QtCore.QObject):
     @QtCore.pyqtSlot()
     def run(self):
         try:
-            frames = self.frames if self.frames is not None else read_frames(self.path)
+            metadata = {}
+            frames = self.frames if self.frames is not None else read_frames(self.path, metadata)
             bg_color = self.cfg.get("bg_color")
             if self.detect_bg and frames:
                 bg_color = detect_bg_color(frames[0][0]).tolist()
@@ -394,6 +465,7 @@ class ImageProcessWorker(QtCore.QObject):
                 "frames": frames,
                 "rendered": rendered,
                 "bg_color": bg_color,
+                "metadata": metadata,
             })
         except Exception as e:
             self.failed.emit(self.job_id, self.path or "", str(e))
@@ -747,9 +819,32 @@ class Pet(QtWidgets.QWidget):
             self.base_size = (w, h)
         self.apply_rendered_frames(rendered)
         self.persist()
+        self.prompt_image_policy_notice(result.get("metadata"))
         if self.tray:
             self.tray.setToolTip(APP_NAME)
             self.tray.refresh_icon()
+
+    def prompt_image_policy_notice(self, metadata):
+        if not self.tray or not metadata:
+            return
+        lines = []
+        dropped = int(metadata.get("dropped_frames") or 0)
+        if dropped:
+            lines.append(
+                "GIF 프레임 %d개 중 %d개만 사용했습니다."
+                % (int(metadata.get("source_frame_count") or 0),
+                   int(metadata.get("stored_frame_count") or 0)))
+        if metadata.get("downsized"):
+            lines.append(
+                "프레임 크기를 %dx%d에서 %dx%d로 줄였습니다."
+                % (metadata["original_size"][0], metadata["original_size"][1],
+                   metadata["stored_size"][0], metadata["stored_size"][1]))
+        if lines:
+            self.tray.showMessage(
+                "대형 이미지 자동 최적화",
+                "\n".join(lines),
+                QtWidgets.QSystemTrayIcon.Information,
+                10000)
 
     def on_processing_failed(self, job_id, path, message):
         if job_id != self._job_id:

@@ -106,6 +106,34 @@ def test_release_version_compare_handles_v_tags(overlay_module):
     assert not mod.is_newer_version("not-a-version", "0.2.1")
 
 
+def test_read_frames_limits_gif_frames_and_preserves_duration(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "MAX_GIF_FRAMES", 3)
+    monkeypatch.setattr(mod, "MAX_GIF_TOTAL_PIXELS", 10_000)
+    durations = [40, 50, 60, 70, 80, 90]
+    frames = [
+        mod.Image.new("RGBA", (8, 8), (i * 35, 0, 0, 255))
+        for i in range(len(durations))
+    ]
+    path = tmp_path / "sample.gif"
+    frames[0].save(
+        path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=0,
+    )
+
+    metadata = {}
+    loaded = mod.read_frames(str(path), metadata)
+
+    assert metadata["source_frame_count"] == len(durations)
+    assert metadata["stored_frame_count"] == 3
+    assert metadata["dropped_frames"] == 3
+    assert sum(delay for _frame, delay in loaded) == sum(durations)
+    assert all(frame.shape == (8, 8, 4) for frame, _delay in loaded)
+
+
 def test_anchor_margin_and_click_behavior(qapp, overlay_module):
     mod = overlay_module
     cfg = dict(mod.DEFAULTS)
