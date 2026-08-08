@@ -12,21 +12,38 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.2.0** 입니다.
+현재 최신 릴리스는 **v0.2.1** 입니다.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.2.0/Desktop_Overlay_Start.exe)
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.2.1/Desktop_Overlay_Start.exe)
 
 ```text
-SHA256: 7747c8b930a6372ff4ce81f9d1490e46a375e2c7b162e7fdc918e3aa537f3a8e
+SHA256: fe6ae8563449137b1d64fff41c8b162cdf574486e593ee1120d2bc56b7978c39
 ```
 
-v0.2.0에서는 대형 이미지/GIF 처리 중 UI 멈춤을 줄이고, 구석 고정·설정 저장·실행 배치 파일·자동 테스트/릴리즈 빌드를 보강했습니다.
+v0.2.1에서는 트레이 메뉴에 업데이트 확인을 추가하고, 새 릴리스가 있으면 트레이 아이콘에 빨간점을 표시합니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
 기본값이 클릭 통과라 게임이나 작업을 가리지 않고, 트레이 아이콘에서 모든 설정을 바꿀 수 있습니다.
 
 새 릴리스가 있으면 트레이 아이콘 우상단에 빨간점이 표시되고, 트레이 메뉴의 **업데이트 확인**에서 릴리스 페이지를 열 수 있습니다.
+
+## 시스템 요구사항
+
+실행 파일 기준입니다. 파이썬을 직접 설치해서 실행할 때도 요구 수준은 거의 같습니다.
+
+| 구분 | 최소 | 권장 |
+|---|---|---|
+| OS | Windows 10 64-bit | Windows 11 64-bit 또는 Windows 10 최신 업데이트 |
+| CPU | 2코어 x64 CPU | 4코어 이상 x64 CPU |
+| 메모리 | 시스템 RAM 4GB, 여유 메모리 500MB 이상 | 시스템 RAM 8GB 이상, 여유 메모리 2GB 이상 |
+| GPU | WDDM 지원 내장 그래픽 | 최신 내장 그래픽 또는 외장 GPU |
+| 저장공간 | 200MB 이상 | 500MB 이상 |
+| 네트워크 | 업데이트 확인 시 인터넷 연결 | 업데이트 확인과 릴리스 다운로드용 인터넷 연결 |
+
+예상 메모리 사용량은 정적 이미지 기준 약 150~300MB입니다.
+
+큰 GIF는 프레임을 처리하므로 해상도와 프레임 수에 따라 1GB 이상까지 늘 수 있습니다.
 
 ## 다른 도구와 뭐가 다른가
 
