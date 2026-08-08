@@ -43,6 +43,7 @@ DEFAULTS = {
     "holes": True,       # 캐릭터에 둘러싸인 배경색 덩어리도 제거
     "auto_bg": True,     # 모서리에서 배경색 자동 추출
     "bg_color": [255, 255, 255],
+    "snap_margin": 0,        # 구석으로 보낼 때 띄울 여백(px)
     "chroma_bg": None,       # [r,g,b] 이면 창을 그 색으로 채운다 (윈도우 캡처 + 컬러키용)
     "click_through": True,   # 기본: 마우스 통과 (게임 조작 방해 없음)
     "flip": False,
@@ -528,15 +529,57 @@ class Pet(QtWidgets.QWidget):
             a.triggered.connect(lambda _, k=key: self.toggle(k))
 
         m.addSeparator()
-        m.addAction("화면 가운데로 되돌리기", self.center_on_screen)
+        self.add_position_menu(m)
         m.addAction("종료", QtWidgets.QApplication.quit)
         return m
 
     def center_on_screen(self):
-        g = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        self.move(g.center().x() - self.width() // 2, g.center().y() - self.height() // 2)
+        self.snap_to(QtWidgets.QApplication.primaryScreen(), 1, 1)
+
+    def snap_to(self, screen, hx, vy):
+        """지정한 모니터의 구석으로 옮긴다. hx/vy: 0=시작, 1=가운데, 2=끝.
+        작업표시줄을 침범하지 않도록 availableGeometry 를 쓴다."""
+        g = screen.availableGeometry()
+        m = int(self.cfg.get("snap_margin", 0))
+        x = (g.left() + m, g.center().x() - self.width() // 2, g.right() - self.width() + 1 - m)[hx]
+        y = (g.top() + m, g.center().y() - self.height() // 2, g.bottom() - self.height() + 1 - m)[vy]
+        self.move(int(x), int(y))
         self.raise_()
         self.persist()
+
+    def add_position_menu(self, parent):
+        screens = QtWidgets.QApplication.screens()
+        primary = QtWidgets.QApplication.primaryScreen()
+        here = self.screen_of_window()
+
+        spots = (("좌측 상단", 0, 0), ("상단 중앙", 1, 0), ("우측 상단", 2, 0),
+                 ("좌측 중앙", 0, 1), ("정중앙", 1, 1), ("우측 중앙", 2, 1),
+                 ("좌측 하단", 0, 2), ("하단 중앙", 1, 2), ("우측 하단", 2, 2))
+
+        root = parent.addMenu("위치 바로가기")
+        for i, sc in enumerate(screens, start=1):
+            g = sc.geometry()
+            label = "%s 모니터 %d (%dx%d)%s" % (
+                "주" if sc == primary else "보조", i, g.width(), g.height(),
+                "  ← 현재" if sc == here else "")
+            sub = root.addMenu(label)
+            for text, hx, vy in spots:
+                a = sub.addAction(text)
+                a.triggered.connect(lambda _, s=sc, h=hx, v=vy: self.snap_to(s, h, v))
+
+        root.addSeparator()
+        mm = root.addMenu("구석 여백: %dpx" % self.cfg.get("snap_margin", 0))
+        for v in (0, 10, 20, 40, 80):
+            a = mm.addAction("%dpx%s" % (v, "  ←" if v == self.cfg.get("snap_margin", 0) else ""))
+            a.triggered.connect(lambda _, v=v: self.set_margin(v))
+
+    def set_margin(self, v):
+        self.cfg["snap_margin"] = v
+        self.persist()
+
+    def screen_of_window(self):
+        c = self.frameGeometry().center()
+        return QtWidgets.QApplication.screenAt(c) or QtWidgets.QApplication.primaryScreen()
 
     def set_cfg(self, key, value):
         self.cfg[key] = value
