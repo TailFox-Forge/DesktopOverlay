@@ -299,12 +299,19 @@ pytest
 
 ## 버전별 변경 내역
 
-### [v0.3.19](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.19)
+### [v0.3.20](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.20)
 
 - 소스 실행/빌드 배치가 기존 가상환경의 Python 3.10 이상 여부를 다시 검사하고, 소스 실행용 가상환경은 `requirements.txt` 해시가 바뀌면 의존성을 재설치합니다.
 - 손상되었거나 최상위 형식이 잘못된 `config.json`을 기본값으로 덮어쓰기 전에 `config.json.bad-...` 백업으로 보존하고, 트레이 알림에 백업 경로를 표시합니다.
 - 이미지/GIF 프레임 축소 계산이 경계값에서도 프레임당 4,000,000px 상한을 넘지 않도록 보정했습니다.
 - 모든 pip 설치 경로에 `--only-binary=:all:`을 추가해 해시 잠금 의존성을 wheel 전용으로 설치하도록 하드닝했습니다.
+- `v0.3.19` 릴리스 실패 원인이던 workflow YAML 인용 문제를 수정했습니다.
+
+### v0.3.19 - 릴리스 게시 실패 태그
+
+- Git 태그는 남아 있지만 GitHub Release와 배포 파일은 생성되지 않았습니다.
+- `--only-binary=:all:` 설치 옵션을 YAML 한 줄 scalar에 그대로 넣어 workflow 파일 구문 오류가 발생했습니다.
+- 실제 배포는 `v0.3.20`에 통합됐습니다.
 
 ### [v0.3.18](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.18)
 
