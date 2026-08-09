@@ -44,12 +44,21 @@ jobs:
         run: |
           $hash = (Get-FileHash dist\Desktop_Overlay_Start.exe -Algorithm SHA256).Hash.ToLower()
           "sha256=$hash" >> $env:GITHUB_OUTPUT
+      - name: Validate release tag
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Release tag must match vX.Y.Z. Actual: $env:TAG"
+          }
       - name: Write release notes
         shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          $tag = "${{ github.ref_name }}"
           @"
-          ## DesktopOverlay $tag
+          ## DesktopOverlay $env:TAG
 
           변경 사항:
           - 단축키 설정창의 캡처 UI 도 config.json 정규화와 같은 예약 조합 판정을 사용합니다.
@@ -66,13 +75,13 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          gh release view $tag *> $null
+          gh release view $env:TAG *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $tag --title "$tag" --notes-file release_notes.md
-            gh release upload $tag dist\Desktop_Overlay_Start.exe --clobber
+            gh release edit $env:TAG --title "$env:TAG" --notes-file release_notes.md
+            gh release upload $env:TAG dist\Desktop_Overlay_Start.exe --clobber
           } else {
-            gh release create $tag dist\Desktop_Overlay_Start.exe --title "$tag" --notes-file release_notes.md
+            gh release create $env:TAG dist\Desktop_Overlay_Start.exe --title "$env:TAG" --notes-file release_notes.md
           }
