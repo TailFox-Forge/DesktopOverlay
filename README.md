@@ -12,15 +12,11 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.3.4** 입니다.
+최신 버전과 파일 해시는 [릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 확인하세요.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.4/Desktop_Overlay_Start.exe)
+각 릴리스의 SHA256은 해당 릴리스 노트에 적혀 있습니다.
 
-```text
-SHA256: 5a95673455009a06e55ae354514cbc3d4f6a5678f7e38552a7fc4078344e1b7c
-```
-
-v0.3.4에서는 단축키 설정창의 캡처 UI도 같은 예약 조합 판정을 사용하도록 보강했습니다.
+버전별로 무엇이 바뀌었는지는 아래 [버전별 변경 내역](#버전별-변경-내역)에 정리되어 있습니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
