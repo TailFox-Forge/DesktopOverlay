@@ -455,6 +455,66 @@ def test_shortcut_allows_numpad_digit_without_modifier(overlay_module):
     assert mod.hotkey_to_windows("Num1") == (mod.MOD_NOREPEAT, 0x61)
 
 
+@pytest.mark.parametrize("shortcut", [
+    "Delete",
+    "Backspace",
+    "Tab",
+    "Esc",
+    "Ctrl+Alt+Delete",
+    "Alt+Tab",
+    "Ctrl+Esc",
+    "Ctrl+Shift+Esc",
+])
+def test_shortcut_rejects_single_reserved_keys_and_windows_reserved_combos(overlay_module, shortcut):
+    mod = overlay_module
+
+    assert mod.normalize_shortcut_string(shortcut) == ""
+    assert mod.hotkey_to_windows(shortcut) is None
+
+
+@pytest.mark.parametrize("shortcut", [
+    "Ctrl+Shift+Delete",
+    "Ctrl+Delete",
+    "Shift+Delete",
+    "Ctrl+Backspace",
+    "Alt+Backspace",
+    "Ctrl+Tab",
+    "Ctrl+Shift+Tab",
+])
+def test_shortcut_allows_modified_editing_and_tab_keys(overlay_module, shortcut):
+    mod = overlay_module
+
+    assert mod.normalize_shortcut_string(shortcut) == shortcut
+    assert mod.hotkey_to_windows(shortcut) is not None
+
+
+def test_hotkey_capture_delete_only_clears_without_modifiers(qapp, overlay_module):
+    mod = overlay_module
+    button = mod.HotkeyCaptureButton("show")
+    captured = []
+    button.captured.connect(lambda command, shortcut, error: captured.append((command, shortcut, error)))
+
+    try:
+        button.start_capture()
+        button.keyPressEvent(QtGui.QKeyEvent(
+            QtCore.QEvent.KeyPress,
+            QtCore.Qt.Key_Delete,
+            QtCore.Qt.NoModifier,
+        ))
+        assert captured == [("show", "", "")]
+
+        captured.clear()
+        button.start_capture()
+        button.keyPressEvent(QtGui.QKeyEvent(
+            QtCore.QEvent.KeyPress,
+            QtCore.Qt.Key_Delete,
+            QtCore.Qt.ControlModifier,
+        ))
+        assert captured == [("show", "Ctrl+Delete", "")]
+    finally:
+        button.deleteLater()
+
+
 def test_hotkey_capture_waits_for_modifier_combo(qapp, overlay_module):
     mod = overlay_module
     button = mod.HotkeyCaptureButton("show")

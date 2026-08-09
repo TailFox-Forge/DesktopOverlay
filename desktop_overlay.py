@@ -25,7 +25,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.3.2"
+APP_VERSION = "0.3.3"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
@@ -160,6 +160,12 @@ SPECIAL_KEY_ALIASES.update({
     "prtscr": "PrintScreen",
 })
 DISALLOWED_HOTKEY_KEYS = {"Esc", "Tab", "Backspace", "Delete"}
+RESERVED_HOTKEY_COMBOS = {
+    ("Ctrl", "Alt", "Delete"),
+    ("Alt", "Tab"),
+    ("Ctrl", "Esc"),
+    ("Ctrl", "Shift", "Esc"),
+}
 MODIFIER_ALIASES = {
     "ctrl": "Ctrl",
     "control": "Ctrl",
@@ -369,13 +375,17 @@ def normalize_shortcut_string(shortcut):
             return ""
         key_name = candidate
 
-    if not key_name or key_name in DISALLOWED_HOTKEY_KEYS:
+    if not key_name:
         return ""
     if not modifiers and not key_name.startswith("Num"):
         return ""
 
     ordered = [modifier for modifier in MODIFIER_ORDER if modifier in modifiers]
     ordered.append(key_name)
+    if not modifiers and key_name in DISALLOWED_HOTKEY_KEYS:
+        return ""
+    if tuple(ordered) in RESERVED_HOTKEY_COMBOS:
+        return ""
     return "+".join(ordered)
 
 
@@ -395,10 +405,15 @@ def shortcut_from_key_event(event):
     key = event.key()
     if key in MODIFIER_KEYS:
         return None, "Ctrl, Alt, Shift, Win 만으로는 단축키를 만들 수 없습니다."
-    if key in (QtCore.Qt.Key_Backspace, QtCore.Qt.Key_Delete):
+    modifiers = event.modifiers()
+    active_modifiers = modifiers & (
+        QtCore.Qt.ControlModifier
+        | QtCore.Qt.AltModifier
+        | QtCore.Qt.ShiftModifier
+        | QtCore.Qt.MetaModifier)
+    if key in (QtCore.Qt.Key_Backspace, QtCore.Qt.Key_Delete) and not active_modifiers:
         return "", None
 
-    modifiers = event.modifiers()
     keypad = bool(modifiers & QtCore.Qt.KeypadModifier)
     key_name = key_name_from_qt(key, keypad=keypad)
     if not key_name or key_name in ("Esc", "Tab"):
