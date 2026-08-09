@@ -1,5 +1,11 @@
 # DesktopOverlay 변경 내역
 
+## [v0.3.9](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.9)
+
+- `v0.3.8` 릴리스 워크플로의 게시 단계가 다운로드된 artifact 내부 경로를 고정 가정하지 않도록 보강했습니다.
+- 게시 job이 실제 `DisplayOverlay.zip`과 `release_notes.md` 위치를 찾아 릴리스를 생성/갱신하도록 수정했습니다.
+- `v0.3.8`의 이슈 #54~#60 수정 내용은 그대로 포함합니다.
+
 ## [v0.3.8](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.8)
 
 - 소스 실행용 `requirements.txt`도 CI/릴리스에서 검증한 런타임 버전으로 고정했습니다.

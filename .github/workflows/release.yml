@@ -137,9 +137,17 @@ jobs:
           TAG: ${{ github.ref_name }}
         shell: bash
         run: |
+          ZIP_PATH="$(find dist -type f -name 'DisplayOverlay.zip' | head -n 1)"
+          NOTES_PATH="$(find dist -type f -name 'release_notes.md' | head -n 1)"
+          if [ -z "$ZIP_PATH" ] || [ -z "$NOTES_PATH" ]; then
+            echo "Downloaded artifact layout:"
+            find dist -maxdepth 5 -type f -print
+            exit 1
+          fi
+
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TAG" --notes-file dist/release_notes.md
-            gh release upload "$TAG" dist/DisplayOverlay.zip --clobber
+            gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES_PATH"
+            gh release upload "$TAG" "$ZIP_PATH" --clobber
           else
-            gh release create "$TAG" dist/DisplayOverlay.zip --title "$TAG" --notes-file dist/release_notes.md
+            gh release create "$TAG" "$ZIP_PATH" --title "$TAG" --notes-file "$NOTES_PATH"
           fi
