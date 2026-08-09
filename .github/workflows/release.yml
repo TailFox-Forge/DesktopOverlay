@@ -52,11 +52,11 @@ jobs:
           ## DesktopOverlay $tag
 
           변경 사항:
-          - config.json 에 직접 입력된 전역 단축키도 설정창과 같은 안전 규칙으로 검증합니다.
-          - Space, Enter, F1 같은 수식어 없는 단독키는 시작 시 제거하고 Num0~Num9 단독키만 유지합니다.
-          - 문자열 bool 값 true/false, yes/no, on/off, 1/0 을 명시적으로 해석합니다.
-          - 프리릴리스 태그를 자동 업데이트 대상으로 안내하지 않도록 업데이트 판정을 보강했습니다.
-          - 설정 파일 직접 편집 경로에 대한 회귀 테스트를 추가했습니다.
+          - 단독 Esc, Tab, Backspace, Delete 는 계속 거부하되 수식어가 붙은 정상 조합은 허용합니다.
+          - Ctrl+Delete, Ctrl+Backspace, Ctrl+Tab, Ctrl+Shift+Delete 같은 조합을 등록할 수 있게 했습니다.
+          - Ctrl+Alt+Delete, Alt+Tab, Ctrl+Esc, Ctrl+Shift+Esc 같은 Windows 예약 조합은 계속 거부합니다.
+          - 단축키 캡처 UI 에서 Backspace/Delete 삭제 동작은 수식어 없는 입력에만 적용합니다.
+          - 예약/허용 단축키 조합에 대한 회귀 테스트를 추가했습니다.
 
           SHA256:
           ~~~text
