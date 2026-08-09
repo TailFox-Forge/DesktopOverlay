@@ -1,5 +1,14 @@
 # DesktopOverlay 변경 내역
 
+## [v0.3.12](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.12)
+
+- `v0.3.8`, `v0.3.9` 실패 태그가 실제 릴리스 링크처럼 보이지 않도록 README와 CHANGELOG 표기를 정리했습니다.
+- 소스 실행 문서의 Python 요구사항을 실제 의존성/CI 기준인 Python 3.10 이상으로 정정했습니다.
+- 소스 실행 배치와 빌드 배치가 전역 Python 환경 대신 `.venv-runtime`, `.venv-build` 가상환경을 사용하도록 분리했습니다.
+- 이미지 읽기/처리 실패 시 트레이 tooltip이 `이미지 처리 중...` 상태에 남지 않도록 실패 종류별 안내 문구로 갱신합니다.
+- 릴리스 publish job이 기존 `DisplayOverlay.zip` 자산을 덮어쓰지 않고, 자산이 이미 있으면 실패하도록 변경했습니다.
+- 런타임/릴리스 의존성 lock에 SHA256 해시를 추가하고 모든 설치 경로가 `--require-hashes`를 사용하도록 보강했습니다.
+
 ## [v0.3.11](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.11)
 
 - Windows 자동 실행 바로가기 처리에서 PowerShell 실행을 신뢰 가능한 절대 경로로만 제한했습니다.
