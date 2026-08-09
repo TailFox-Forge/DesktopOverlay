@@ -934,12 +934,23 @@ def open_repository_page():
 # ---------------------------------------------------------------- 이미지 처리
 
 def fit_size_within_pixels(width, height, max_pixels=None):
-    max_pixels = MAX_FRAME_PIXELS if max_pixels is None else max_pixels
-    pixels = max(1, int(width) * int(height))
+    max_pixels = max(1, int(MAX_FRAME_PIXELS if max_pixels is None else max_pixels))
+    width = max(1, int(width))
+    height = max(1, int(height))
+    pixels = width * height
     if pixels <= max_pixels:
-        return int(width), int(height)
+        return width, height
     scale = (float(max_pixels) / float(pixels)) ** 0.5
-    return max(1, int(round(width * scale))), max(1, int(round(height * scale)))
+    target_w = max(1, int(round(width * scale)))
+    target_h = max(1, int(round(height * scale)))
+    while target_w * target_h > max_pixels:
+        if target_w >= target_h and target_w > 1:
+            target_w -= 1
+        elif target_h > 1:
+            target_h -= 1
+        else:
+            break
+    return target_w, target_h
 
 
 def validate_source_pixels(width, height):

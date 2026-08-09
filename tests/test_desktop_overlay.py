@@ -1122,6 +1122,25 @@ def test_read_frames_limits_gif_after_downscale(overlay_module, tmp_path, monkey
     assert all(frame.shape == (5, 5, 4) for frame, _delay in loaded)
 
 
+@pytest.mark.parametrize(
+    ("width", "height", "limit"),
+    [
+        (408, 9923, 4_000_000),
+        (206, 19895, 4_000_000),
+        (20, 20, 25),
+        (2, 99, 1),
+    ],
+)
+def test_fit_size_within_pixels_never_exceeds_limit(overlay_module, width, height, limit):
+    mod = overlay_module
+
+    target_w, target_h = mod.fit_size_within_pixels(width, height, limit)
+
+    assert target_w >= 1
+    assert target_h >= 1
+    assert target_w * target_h <= limit
+
+
 def test_read_frames_rejects_excessive_gif_source_frames(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     monkeypatch.setattr(mod, "MAX_GIF_SOURCE_FRAMES", 3)
