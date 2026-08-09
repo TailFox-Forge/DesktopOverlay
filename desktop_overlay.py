@@ -13,6 +13,7 @@ GIF/PNG/JPG/WEBP/BMP 를 프레임 없는 투명 창으로 항상 위에 표시�
 """
 import ctypes
 import ctypes.wintypes
+import datetime
 import json
 import os
 import subprocess
@@ -748,6 +749,32 @@ def consume_config_notices():
     return notices
 
 
+def backup_invalid_config(path):
+    if not path or not os.path.exists(path):
+        return None
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = "%s.bad-%s" % (path, stamp)
+    counter = 1
+    while os.path.exists(backup_path):
+        backup_path = "%s.bad-%s-%d" % (path, stamp, counter)
+        counter += 1
+    try:
+        with open(path, "rb") as src, open(backup_path, "wb") as dst:
+            dst.write(src.read())
+        return backup_path
+    except Exception as exc:
+        add_config_notice("손상된 설정 파일을 백업하지 못했습니다.\n%s\n%s" % (path, exc))
+        return None
+
+
+def add_invalid_config_notice(message, path):
+    backup_path = backup_invalid_config(path)
+    if backup_path:
+        add_config_notice("%s\n%s\n백업: %s" % (message, path, backup_path))
+    else:
+        add_config_notice("%s\n%s" % (message, path))
+
+
 def initial_config_path():
     if os.path.exists(PORTABLE_CONFIG_PATH):
         return PORTABLE_CONFIG_PATH
@@ -767,10 +794,14 @@ def load_config():
         if isinstance(data, dict):
             cfg.update(data)
         else:
-            add_config_notice("설정 파일 형식이 올바르지 않아 기본값으로 시작했습니다.\n%s" % CONFIG_PATH)
+            add_invalid_config_notice(
+                "설정 파일 형식이 올바르지 않아 기본값으로 시작했습니다.",
+                CONFIG_PATH)
     except Exception:
         if os.path.exists(CONFIG_PATH):
-            add_config_notice("설정을 읽지 못해 기본값으로 시작했습니다.\n%s" % CONFIG_PATH)
+            add_invalid_config_notice(
+                "설정을 읽지 못해 기본값으로 시작했습니다.",
+                CONFIG_PATH)
     normalized = normalize_config(cfg)
     if normalized != cfg and os.path.exists(CONFIG_PATH):
         add_config_notice("설정값 일부가 올바르지 않아 기본값 또는 허용 범위로 보정했습니다.\n%s" % CONFIG_PATH)

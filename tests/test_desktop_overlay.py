@@ -279,6 +279,50 @@ def test_load_config_normalizes_bad_values(overlay_module):
     assert cfg["hotkeys"]["show"] == "Ctrl+F1"
     assert cfg["hotkeys_enabled"] is True
     assert "설정값 일부" in "\n".join(mod.consume_config_notices())
+    assert not [
+        name for name in os.listdir(os.path.dirname(mod.CONFIG_PATH))
+        if name.startswith("config.json.bad-")
+    ]
+
+
+def test_load_config_backs_up_unreadable_json_before_defaulting(overlay_module):
+    mod = overlay_module
+    broken = "{not-json"
+    with open(mod.CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(broken)
+
+    cfg = mod.load_config()
+
+    backups = [
+        name for name in os.listdir(os.path.dirname(mod.CONFIG_PATH))
+        if name.startswith("config.json.bad-")
+    ]
+    assert cfg == mod.normalize_config(mod.default_config())
+    assert len(backups) == 1
+    backup_path = os.path.join(os.path.dirname(mod.CONFIG_PATH), backups[0])
+    assert open(backup_path, encoding="utf-8").read() == broken
+    notices = "\n".join(mod.consume_config_notices())
+    assert "설정을 읽지 못해 기본값으로 시작" in notices
+    assert "백업:" in notices
+    assert backup_path in notices
+
+
+def test_load_config_backs_up_non_object_json_before_defaulting(overlay_module):
+    mod = overlay_module
+    with open(mod.CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(["not", "a", "config"], f)
+
+    cfg = mod.load_config()
+
+    backups = [
+        name for name in os.listdir(os.path.dirname(mod.CONFIG_PATH))
+        if name.startswith("config.json.bad-")
+    ]
+    assert cfg == mod.normalize_config(mod.default_config())
+    assert len(backups) == 1
+    notices = "\n".join(mod.consume_config_notices())
+    assert "설정 파일 형식이 올바르지 않아 기본값으로 시작" in notices
+    assert "백업:" in notices
 
 
 def test_load_config_rejects_unsafe_standalone_hotkeys(overlay_module):
