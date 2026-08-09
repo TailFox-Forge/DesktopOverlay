@@ -1,5 +1,14 @@
 # DesktopOverlay 변경 내역
 
+## [v0.3.15](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.15)
+
+- 소스 실행/빌드 배치의 Python 탐지 프로브가 실행 파일 경로를 출력하기 전에 종료되던 회귀를 수정했습니다.
+- `.venv-runtime`, `.venv-build`가 손상된 경우 자동으로 삭제 후 재생성하도록 보강했습니다.
+- 경로에 닫는 괄호가 포함되어도 배치 파일의 가상환경 생성 안내가 깨지지 않도록 정리했습니다.
+- 릴리스 자산이 이미 있는 부분 실패 상태에서도 릴리스 노트는 갱신하고, zip 자산 덮어쓰기만 차단하도록 publish job을 개선했습니다.
+- 클릭 통과 Win32 확장 스타일 적용부에 `ctypes` 함수 시그니처와 예외 처리를 추가했습니다.
+- `pip --require-hashes`가 잘못된 해시를 실제로 거부하는지 확인하는 negative CI 테스트를 추가했습니다.
+
 ## [v0.3.14](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.14)
 
 - `v0.3.13` 릴리스 게시 실패 원인이던 Windows `pytest` 전이 의존성 `colorama`를 해시 lock에 명시했습니다.
