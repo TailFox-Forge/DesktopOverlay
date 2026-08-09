@@ -12,15 +12,15 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.3.1** 입니다.
+현재 최신 릴리스는 **v0.3.2** 입니다.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.1/Desktop_Overlay_Start.exe)
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.2/Desktop_Overlay_Start.exe)
 
 ```text
-SHA256: c91a0e2c703ca85ae36c0f42ba18bbbe371650947ba99d5530eaac677cbf3152
+SHA256: 607a4932a4ce275f92a089c9cf8a12284d701438a3965b8d2c2400b21de93b5b
 ```
 
-v0.3.1에서는 설정값 검증, 대형 GIF 처리 취소/메모리 정리, 업데이트 버전 비교, 자동 실행 메뉴 응답성, 전역 단축키 안전 정책을 보강했습니다.
+v0.3.2에서는 config.json 직접 편집 경로의 단축키·bool 설정값 검증과 프리릴리스 업데이트 판정을 보강했습니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
@@ -295,6 +295,14 @@ pytest
 테두리 없는 창 모드를 사용하세요.
 
 ## 버전별 변경 내역
+
+### [v0.3.2](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.2)
+
+- `config.json`에 직접 입력된 전역 단축키도 설정창과 같은 안전 규칙으로 검증합니다.
+- `Space`, `Enter`, `F1` 같은 수식어 없는 단독키는 시작 시 제거하고, `Num0`~`Num9` 단독키만 유지합니다.
+- 문자열 bool 값 `true/false`, `yes/no`, `on/off`, `1/0`을 명시적으로 해석합니다.
+- 프리릴리스 태그를 자동 업데이트 대상으로 안내하지 않도록 업데이트 판정을 보강했습니다.
+- 설정 파일 직접 편집 경로에 대한 회귀 테스트를 추가했습니다.
 
 ### [v0.3.1](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.1)
 
