@@ -206,8 +206,9 @@ GitHub 가 자동으로 제공하는 **Source code (zip/tar.gz)** 는 태그가 
 
 Python 3.10 이상, PyQt5, Pillow, numpy.
 
-클릭 통과는 `WM_NCHITTEST`에 `HTTRANSPARENT`를 반환하는 방식으로 구현한다.
+클릭 통과는 창의 `WS_EX_TRANSPARENT` 확장 스타일을 켜고,
+`WM_NCHITTEST`에 `HTTRANSPARENT`를 반환하는 fallback을 함께 둔다.
 
-`WS_EX_TRANSPARENT` 확장 스타일은 반투명 창의 렌더링을 깨뜨리는 것을 확인했으므로 쓰지 않는다.
+클릭 통과를 끄면 `WS_EX_TRANSPARENT`는 즉시 해제되어 다시 드래그/우클릭 메뉴를 사용할 수 있어야 한다.
 
 이 의존성 때문에 현재 윈도우 전용이다.

@@ -26,7 +26,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.3.12"
+APP_VERSION = "0.3.13"
 REPOSITORY_URL = "https://github.com/TailFox-Forge/DesktopOverlay"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
@@ -1147,6 +1147,49 @@ def key_out(rgba, bg, tolerance, softness, despill, edge_only=True, edge_thresh=
 
 WM_NCHITTEST = 0x0084
 HTTRANSPARENT = -1
+GWL_EXSTYLE = -20
+WS_EX_TRANSPARENT = 0x00000020
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOZORDER = 0x0004
+SWP_NOACTIVATE = 0x0010
+SWP_FRAMECHANGED = 0x0020
+
+
+def click_through_exstyle(exstyle, enabled):
+    if enabled:
+        return int(exstyle) | WS_EX_TRANSPARENT
+    return int(exstyle) & ~WS_EX_TRANSPARENT
+
+
+def win32_user32():
+    windll = getattr(ctypes, "windll", None)
+    return getattr(windll, "user32", None) if windll else None
+
+
+def window_exstyle(hwnd):
+    user32 = win32_user32()
+    if not user32:
+        return None
+    getter = getattr(user32, "GetWindowLongPtrW", None) or getattr(user32, "GetWindowLongW", None)
+    if not getter:
+        return None
+    return int(getter(hwnd, GWL_EXSTYLE))
+
+
+def set_window_exstyle(hwnd, exstyle):
+    user32 = win32_user32()
+    if not user32:
+        return False
+    setter = getattr(user32, "SetWindowLongPtrW", None) or getattr(user32, "SetWindowLongW", None)
+    if not setter:
+        return False
+    setter(hwnd, GWL_EXSTYLE, int(exstyle))
+    set_pos = getattr(user32, "SetWindowPos", None)
+    if set_pos:
+        set_pos(hwnd, None, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
+    return True
 
 
 def to_qpixmap(rgba):
@@ -1731,6 +1774,18 @@ class Pet(QtWidgets.QWidget):
             self.show()
             self.raise_()
         self.setWindowOpacity(float(self.cfg.get("opacity", 1.0)))
+        self.apply_click_through_style()
+
+    def apply_click_through_style(self):
+        if sys.platform != "win32":
+            return
+        hwnd = int(self.winId())
+        current = window_exstyle(hwnd)
+        if current is None:
+            return
+        desired = click_through_exstyle(current, bool(self.cfg.get("click_through")))
+        if desired != current:
+            set_window_exstyle(hwnd, desired)
 
     def toggle_visible(self):
         """방송 중 즉시 감추기. 트레이 아이콘은 남아 있어 언제든 되돌릴 수 있다."""
@@ -1743,6 +1798,7 @@ class Pet(QtWidgets.QWidget):
         else:
             self.show()
             self.raise_()
+            self.apply_click_through_style()
         if self.tray:
             self.tray.setToolTip("%s (%s)" % (APP_NAME, "숨김" if self.hidden else "표시 중"))
 
@@ -1752,8 +1808,7 @@ class Pet(QtWidgets.QWidget):
         self.persist()
 
     def nativeEvent(self, event_type, message):
-        """클릭 통과: WM_NCHITTEST 에 HTTRANSPARENT 를 돌려주면 마우스가 아래 창으로 넘어간다.
-        WS_EX_TRANSPARENT 와 달리 창 렌더링에는 영향이 없다."""
+        """클릭 통과 fallback: hit-test 단계에서 아래 창으로 넘긴다."""
         if self.cfg.get("click_through") and event_type == b"windows_generic_MSG":
             msg = ctypes.wintypes.MSG.from_address(int(message))
             if msg.message == WM_NCHITTEST:
@@ -2500,6 +2555,10 @@ class Pet(QtWidgets.QWidget):
 
     def set_cfg(self, key, value):
         self.cfg[key] = value
+        if key == "click_through":
+            self.apply_click_through_style()
+            self.persist()
+            return
         self.rebuild()
         self.persist()
 

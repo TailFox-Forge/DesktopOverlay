@@ -24,11 +24,11 @@ def read_repo_text(*parts):
 def test_failed_release_tags_are_not_linked_as_downloadable_releases():
     for relative_path in ("README.md", "CHANGELOG.md"):
         text = read_repo_text(relative_path)
-        assert "releases/tag/v0.3.8" not in text
-        assert "releases/tag/v0.3.9" not in text
-        assert "v0.3.8 - 릴리스 게시 실패 태그" in text
-        assert "v0.3.9 - 릴리스 게시 실패 태그" in text
+        for tag in ("v0.3.8", "v0.3.9", "v0.3.12"):
+            assert "releases/tag/%s" % tag not in text
+            assert "%s - 릴리스 게시 실패 태그" % tag in text
         assert "실제 배포는 `v0.3.10`에 통합됐습니다." in text
+        assert "실제 배포는 `v0.3.13`에 통합됐습니다." in text
 
 
 def test_source_documentation_requires_python_310():
@@ -73,6 +73,8 @@ def test_dependency_lock_files_use_hash_verification():
 
     assert "--hash=sha256:" in runtime
     assert "--hash=sha256:" in release
+    assert "pefile==2024.8.26" in release
+    assert "pywin32-ctypes==0.2.3" in release
     assert "requirements.in" in read_repo_text("requirements.in")
     assert "requirements-release.in" in read_repo_text("requirements-release.in")
     for installer in (launcher, build_script, ci, release_workflow, readme):
@@ -1342,6 +1344,38 @@ def test_anchor_margin_and_click_behavior(qapp, overlay_module):
             QtCore.QEvent.MouseButtonRelease, local, moved,
             QtCore.Qt.LeftButton, QtCore.Qt.NoButton, QtCore.Qt.NoModifier))
         assert pet.cfg["anchor"] is None
+    finally:
+        pet.close()
+
+
+def test_click_through_exstyle_toggles_transparent_bit(overlay_module):
+    mod = overlay_module
+    base = 0x00080000
+
+    enabled = mod.click_through_exstyle(base, True)
+    assert enabled & mod.WS_EX_TRANSPARENT
+    assert enabled & base
+
+    disabled = mod.click_through_exstyle(enabled, False)
+    assert not (disabled & mod.WS_EX_TRANSPARENT)
+    assert disabled & base
+
+
+def test_click_through_config_applies_native_style_without_rebuild(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    cfg = dict(mod.DEFAULTS)
+    cfg["click_through"] = False
+    pet = mod.Pet(cfg)
+    calls = []
+
+    try:
+        monkeypatch.setattr(pet, "apply_click_through_style", lambda: calls.append(True))
+        monkeypatch.setattr(pet, "rebuild", lambda: pytest.fail("click_through must not rebuild image frames"))
+
+        pet.set_cfg("click_through", True)
+
+        assert pet.cfg["click_through"] is True
+        assert calls == [True]
     finally:
         pet.close()
 
