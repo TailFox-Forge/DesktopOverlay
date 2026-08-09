@@ -292,6 +292,44 @@ def test_startup_worker_reports_create_result(qapp, overlay_module, monkeypatch)
     assert failures == []
 
 
+def test_shutdown_waits_for_startup_worker_timeout_budget(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+
+    class FakeThread:
+        def __init__(self):
+            self.quit_called = False
+            self.wait_timeouts = []
+
+        def quit(self):
+            self.quit_called = True
+
+        def wait(self, timeout_ms):
+            self.wait_timeouts.append(timeout_ms)
+            return True
+
+    cfg = dict(mod.DEFAULTS)
+    pet = mod.Pet(cfg)
+    startup_thread = FakeThread()
+    update_thread = FakeThread()
+
+    try:
+        pet._startup_workers = [(object(), startup_thread)]
+        pet._update_workers = [(object(), update_thread)]
+
+        pet.shutdown()
+
+        assert startup_thread.quit_called
+        assert startup_thread.wait_timeouts == [
+            (mod.STARTUP_COMMAND_TIMEOUT_SEC + 2) * 1000
+        ]
+        assert update_thread.wait_timeouts == [
+            (mod.UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000
+        ]
+    finally:
+        pet.close()
+
+
 def test_outside_region_keeps_enclosed_area_outside_false(overlay_module):
     mod = overlay_module
     passable = np.ones((7, 7), dtype=bool)

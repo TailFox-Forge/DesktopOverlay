@@ -32,6 +32,7 @@ RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
 UPDATE_RESPONSE_MAX_BYTES = 1_000_000
+STARTUP_COMMAND_TIMEOUT_SEC = 15
 RESAMPLE_LANCZOS = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
 
 # PyInstaller onefile 로 묶으면 __file__ 은 임시 압축 해제 폴더를 가리킨다.
@@ -243,7 +244,7 @@ def run_powershell(script):
                 input=script,
                 text=True,
                 capture_output=True,
-                timeout=15,
+                timeout=STARTUP_COMMAND_TIMEOUT_SEC,
                 creationflags=flags,
             )
         except FileNotFoundError as exc:
@@ -2258,7 +2259,7 @@ class Pet(QtWidgets.QWidget):
             thread.wait((UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000)
         for _worker, thread in list(self._startup_workers):
             thread.quit()
-            thread.wait(2000)
+            thread.wait((STARTUP_COMMAND_TIMEOUT_SEC + 2) * 1000)
 
     def hotkey_target_screen(self):
         wanted = self.cfg.get("hotkey_screen") or ""
