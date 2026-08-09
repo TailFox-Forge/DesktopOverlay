@@ -2017,6 +2017,10 @@ class Pet(QtWidgets.QWidget):
         if self.tray:
             if missing_error:
                 self.tray.setToolTip("%s - 이미지를 선택하세요" % APP_NAME)
+            elif read_error:
+                self.tray.setToolTip("%s - 이미지를 다시 선택하세요" % APP_NAME)
+            else:
+                self.tray.setToolTip("%s - 이미지 처리 실패" % APP_NAME)
             self.tray.showMessage(
                 "이미지를 읽지 못했습니다" if read_error else "이미지 처리에 실패했습니다",
                 "%s\n%s" % (path or "(경로 없음)", message),

@@ -634,8 +634,43 @@ def test_policy_read_failure_does_not_mark_image_missing(qapp, overlay_module, m
 
         assert pet.need_image is None
         assert pet.missing_image_path is None
-        assert tooltips == []
+        assert tooltips == ["%s - 이미지를 다시 선택하세요" % mod.APP_NAME]
         assert messages[-1][0] == "이미지를 읽지 못했습니다"
+    finally:
+        pet.close()
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_tooltip", "expected_title"),
+    [
+        ("read_decode", "%s - 이미지를 다시 선택하세요", "이미지를 읽지 못했습니다"),
+        ("process", "%s - 이미지 처리 실패", "이미지 처리에 실패했습니다"),
+    ],
+)
+def test_processing_failure_replaces_processing_tooltip(
+        qapp, overlay_module, monkeypatch, kind, expected_tooltip, expected_title):
+    mod = overlay_module
+    messages = []
+    tooltips = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+
+    class FakeTray:
+        def setToolTip(self, text):
+            tooltips.append(text)
+
+        def showMessage(self, title, body, *_args):
+            messages.append((title, body))
+
+    pet = mod.Pet(dict(mod.DEFAULTS))
+
+    try:
+        pet.tray = FakeTray()
+        pet._job_id = 17
+
+        pet.on_processing_failed(17, "broken.png", kind, "실패")
+
+        assert tooltips == [expected_tooltip % mod.APP_NAME]
+        assert messages[-1][0] == expected_title
     finally:
         pet.close()
 
