@@ -1,5 +1,11 @@
 # DesktopOverlay 변경 내역
 
+## [v0.3.11](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.11)
+
+- Windows 자동 실행 바로가기 처리에서 PowerShell 실행을 신뢰 가능한 절대 경로로만 제한했습니다.
+- System32 PowerShell 실행이 실패해도 `powershell.exe`/`powershell` PATH 검색으로 fallback하지 않도록 막았습니다.
+- #58 보안 하드닝 회귀 테스트를 추가했습니다.
+
 ## [v0.3.10](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.10)
 
 - Release workflow 게시 job이 checkout 없이도 저장소를 정확히 지정하도록 `gh release` 명령에 repository를 명시했습니다.

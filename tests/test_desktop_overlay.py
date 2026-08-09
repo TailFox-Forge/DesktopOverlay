@@ -204,9 +204,11 @@ def test_create_startup_shortcut_builds_current_exe_link(overlay_module, tmp_pat
 def test_run_powershell_prefers_system32_executable(overlay_module, monkeypatch):
     mod = overlay_module
     calls = []
-    expected = os.path.join(
+    system_directory = os.path.join(
         r"C:\Windows",
-        "System32",
+        "System32")
+    expected = os.path.join(
+        system_directory,
         "WindowsPowerShell",
         "v1.0",
         "powershell.exe")
@@ -221,10 +223,36 @@ def test_run_powershell_prefers_system32_executable(overlay_module, monkeypatch)
         return Result()
 
     monkeypatch.setattr(mod.os, "name", "nt")
-    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    monkeypatch.setattr(mod, "windows_system_directory", lambda: system_directory)
     monkeypatch.setattr(mod.subprocess, "run", fake_run)
 
+    assert mod.powershell_executables() == [expected]
     assert mod.run_powershell("Write-Output ok") == "ok"
+    assert calls == [expected]
+
+
+def test_run_powershell_does_not_fallback_to_path_on_windows(overlay_module, monkeypatch):
+    mod = overlay_module
+    calls = []
+    system_directory = os.path.join(
+        r"C:\Windows",
+        "System32")
+    expected = os.path.join(
+        system_directory,
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe")
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+        raise FileNotFoundError(args[0])
+
+    monkeypatch.setattr(mod.os, "name", "nt")
+    monkeypatch.setattr(mod, "windows_system_directory", lambda: system_directory)
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="신뢰 가능한 PowerShell 절대 경로"):
+        mod.run_powershell("Write-Output ok")
     assert calls == [expected]
 
 

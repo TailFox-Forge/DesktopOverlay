@@ -26,7 +26,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.3.10"
+APP_VERSION = "0.3.11"
 REPOSITORY_URL = "https://github.com/TailFox-Forge/DesktopOverlay"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
@@ -260,32 +260,43 @@ def ps_quote(value):
     return "'%s'" % str(value or "").replace("'", "''")
 
 
+def windows_system_directory():
+    if os.name != "nt":
+        return ""
+    try:
+        buffer = ctypes.create_unicode_buffer(260)
+        size = ctypes.windll.kernel32.GetSystemDirectoryW(buffer, len(buffer))
+        if size:
+            if size > len(buffer):
+                buffer = ctypes.create_unicode_buffer(size)
+                size = ctypes.windll.kernel32.GetSystemDirectoryW(buffer, len(buffer))
+            if size:
+                return buffer.value
+    except Exception:
+        pass
+    return ""
+
+
 def powershell_executables():
-    candidates = []
-    if os.name == "nt":
-        system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
-        if system_root:
-            candidates.append(os.path.join(
-                system_root,
-                "System32",
-                "WindowsPowerShell",
-                "v1.0",
-                "powershell.exe"))
-    candidates.extend(["powershell.exe", "powershell"])
-    unique = []
-    seen = set()
-    for candidate in candidates:
-        key = str(candidate).lower()
-        if key not in seen:
-            seen.add(key)
-            unique.append(candidate)
-    return unique
+    if os.name != "nt":
+        return []
+    system_directory = windows_system_directory()
+    if not system_directory:
+        return []
+    return [
+        os.path.join(
+            system_directory,
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe")
+    ]
 
 
 def run_powershell(script):
     last_error = None
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    for executable in powershell_executables():
+    executables = powershell_executables()
+    for executable in executables:
         try:
             result = subprocess.run(
                 [executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-"],
@@ -302,7 +313,9 @@ def run_powershell(script):
             message = (result.stderr or result.stdout or "").strip()
             raise RuntimeError(message or "PowerShell 실행에 실패했습니다.")
         return result.stdout.strip()
-    raise RuntimeError("PowerShell을 찾을 수 없습니다. %s" % last_error)
+    if executables:
+        raise RuntimeError("신뢰 가능한 PowerShell 절대 경로를 실행할 수 없습니다. %s" % last_error)
+    raise RuntimeError("신뢰 가능한 PowerShell 절대 경로를 찾을 수 없습니다.")
 
 
 def startup_state():
