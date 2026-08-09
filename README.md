@@ -299,6 +299,11 @@ pytest
 
 ## 버전별 변경 내역
 
+### [v0.3.17](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.17)
+
+- 릴리스 재실행 시 기존 `DisplayOverlay.zip`과 새 빌드 zip의 SHA256이 다르면 릴리스 노트를 갱신하지 않고 실패하도록 보강했습니다.
+- 기존 자산과 새 빌드 자산의 SHA256이 같을 때만 릴리스 노트를 갱신하고 업로드를 생략하도록 해, 릴리스 노트 해시와 실제 배포 파일 해시가 어긋나는 상황을 막았습니다.
+
 ### [v0.3.16](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.16)
 
 - 클릭 통과 기본값을 꺼짐으로 바꿔 최초 실행 후 바로 오버레이를 드래그해 위치를 조절할 수 있게 했습니다.
