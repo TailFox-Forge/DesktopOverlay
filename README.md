@@ -299,6 +299,16 @@ pytest
 
 ## 버전별 변경 내역
 
+### [v0.3.8](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.8)
+
+- 소스 실행용 `requirements.txt`도 CI/릴리스에서 검증한 런타임 버전으로 고정했습니다.
+- 초장문 GIF가 저장 프레임 제한을 우회해 원본 프레임을 끝까지 디코딩하지 않도록 원본 프레임 수 상한을 추가했습니다.
+- 파일 없음, 이미지 정책 초과, 디코딩 실패를 구분해 대형/손상 이미지를 파일 없음으로 오진하지 않게 했습니다.
+- 시작프로그램 바로가기의 대상 경로를 비동기 확인해 현재 실행 파일과 다르면 경로 갱신 필요 상태를 표시합니다.
+- 자동 실행 바로가기 생성/검증 시 PowerShell을 SystemRoot 절대 경로로 먼저 실행하도록 하드닝했습니다.
+- 사용하지 않는 `requirements-build.txt`를 제거했습니다.
+- Release workflow를 read-only 빌드 job과 `contents: write` 게시 job으로 분리했습니다.
+
 ### [v0.3.7](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.7)
 
 - 배포 압축 파일명을 `DisplayOverlay.zip`으로 변경했습니다.
