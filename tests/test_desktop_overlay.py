@@ -79,9 +79,34 @@ def test_build_script_uses_dedicated_build_venv():
     assert "python -m pip install -r requirements-release.txt" not in script
 
 
+def test_batch_scripts_reject_old_python_inside_existing_venv():
+    for script_name in ("Desktop_Overlay_Start.bat", "build.bat"):
+        script = read_repo_text(script_name)
+        ensure_block = script.split(":ENSURE_VENV", 1)[1].split(":NOPYTHON", 1)[0]
+
+        assert '"%VENV_PY%" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"' in ensure_block
+        assert "Python 3.10 미만" in ensure_block
+        assert 'rmdir /s /q "%VENV_DIR%"' in ensure_block
+
+
+def test_source_launcher_reinstalls_when_runtime_lock_changes():
+    script = read_repo_text("Desktop_Overlay_Start.bat")
+
+    assert 'set "LOCK_FILE=%~dp0requirements.txt"' in script
+    assert 'set "LOCK_MARKER=%VENV_DIR%\\.requirements.sha256"' in script
+    assert ":ENSURE_REQUIREMENTS" in script
+    assert "hashlib.sha256(lock.read_bytes()).hexdigest()" in script
+    assert "marker.read_text(encoding='ascii').strip() == digest" in script
+    assert "marker.write_text(hashlib.sha256(lock.read_bytes()).hexdigest()" in script
+    assert script.index("call :ENSURE_REQUIREMENTS") < script.index('"%VENV_PY%" -c "import PyQt5, PIL, numpy"')
+
+
 def test_batch_python_probes_print_executable_before_exit():
     for script_name in ("Desktop_Overlay_Start.bat", "build.bat"):
-        snippets = python_probe_snippets(read_repo_text(script_name))
+        snippets = [
+            snippet for snippet in python_probe_snippets(read_repo_text(script_name))
+            if "print(sys.executable)" in snippet
+        ]
         assert len(snippets) == 2
         for snippet in snippets:
             assert snippet.index("print(sys.executable)") < snippet.index("sys.exit(1)")
@@ -103,7 +128,7 @@ def test_batch_scripts_rebuild_broken_venv_and_avoid_raw_path_echo():
         script = read_repo_text(script_name)
 
         assert ":ENSURE_VENV" in script
-        assert '"%VENV_PY%" -c "import sys"' in script
+        assert 'sys.version_info >= (3, 10)' in script
         assert 'rmdir /s /q "%VENV_DIR%"' in script
         assert "%s을 만듭니다: %%VENV_DIR%%" % label not in script
 

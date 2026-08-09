@@ -22,7 +22,11 @@ call :ENSURE_VENV
 if errorlevel 1 goto VENVFAIL
 set "VENV_PYW=%VENV_DIR%\Scripts\pythonw.exe"
 if not exist "%VENV_PYW%" set "VENV_PYW=%VENV_PY%"
+set "LOCK_FILE=%~dp0requirements.txt"
+set "LOCK_MARKER=%VENV_DIR%\.requirements.sha256"
 
+call :ENSURE_REQUIREMENTS
+if errorlevel 1 goto NOLIBS
 "%VENV_PY%" -c "import PyQt5, PIL, numpy" >nul 2>&1
 if errorlevel 1 goto NOLIBS
 
@@ -45,13 +49,19 @@ if defined PYTHON_EXE exit /b 0
 exit /b 1
 
 :ENSURE_VENV
-"%VENV_PY%" -c "import sys" >nul 2>&1
+"%VENV_PY%" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
 if not errorlevel 1 exit /b 0
 echo.
-echo   기존 소스 실행용 가상환경이 손상되어 다시 만듭니다.
+echo   기존 소스 실행용 가상환경이 손상되었거나 Python 3.10 미만이라 다시 만듭니다.
 echo.
 rmdir /s /q "%VENV_DIR%" >nul 2>&1
 "%PYTHON_EXE%" -m venv "%VENV_DIR%"
+if errorlevel 1 exit /b 1
+exit /b 0
+
+:ENSURE_REQUIREMENTS
+if not exist "%LOCK_MARKER%" exit /b 1
+"%VENV_PY%" -c "import hashlib, pathlib, sys; lock=pathlib.Path(r'%LOCK_FILE%'); marker=pathlib.Path(r'%LOCK_MARKER%'); digest=hashlib.sha256(lock.read_bytes()).hexdigest(); sys.exit(0 if marker.read_text(encoding='ascii').strip() == digest else 1)" >nul 2>&1
 if errorlevel 1 exit /b 1
 exit /b 0
 
@@ -89,6 +99,8 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+"%VENV_PY%" -c "import hashlib, pathlib; lock=pathlib.Path(r'%LOCK_FILE%'); marker=pathlib.Path(r'%LOCK_MARKER%'); marker.write_text(hashlib.sha256(lock.read_bytes()).hexdigest() + '\n', encoding='ascii')"
+if errorlevel 1 goto VENVFAIL
 echo.
 echo   설치가 끝났습니다. 프로그램을 시작합니다.
 goto RUN

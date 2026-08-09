@@ -51,10 +51,10 @@ if defined PYTHON_EXE exit /b 0
 exit /b 1
 
 :ENSURE_VENV
-"%VENV_PY%" -c "import sys" >nul 2>&1
+"%VENV_PY%" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
 if not errorlevel 1 exit /b 0
 echo.
-echo   기존 빌드용 가상환경이 손상되어 다시 만듭니다.
+echo   기존 빌드용 가상환경이 손상되었거나 Python 3.10 미만이라 다시 만듭니다.
 echo.
 rmdir /s /q "%VENV_DIR%" >nul 2>&1
 "%PYTHON_EXE%" -m venv "%VENV_DIR%"
