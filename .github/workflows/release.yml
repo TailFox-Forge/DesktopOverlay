@@ -56,20 +56,24 @@ jobs:
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
         run: |
+          $changelog = Get-Content CHANGELOG.md -Raw -Encoding utf8
+          $escapedTag = [regex]::Escape($env:TAG)
+          $pattern = "(?ms)^## \[$escapedTag\]\([^\r\n]+\)\s*(?<body>.*?)(?=^## \[v|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if (-not $match.Success) {
+            throw "CHANGELOG.md does not contain release notes for $env:TAG"
+          }
+          $body = $match.Groups["body"].Value.Trim()
           @"
           ## DesktopOverlay $env:TAG
 
-          변경 사항:
-          - 단축키 설정창의 캡처 UI 도 config.json 정규화와 같은 예약 조합 판정을 사용합니다.
-          - Ctrl+Tab, Ctrl+Shift+Tab 을 설정창에서도 등록할 수 있게 했습니다.
-          - Alt+Tab, Ctrl+Esc, Ctrl+Shift+Esc 는 설정창에서도 계속 거부합니다.
-          - 수식어 없는 Esc 의 캡처 취소 동작은 유지했습니다.
-          - 캡처 UI 전용 회귀 테스트를 추가했습니다.
+          $body
 
           SHA256:
           ~~~text
-          ${{ steps.hash.outputs.sha256 }}  Desktop_Overlay_Start.exe
+          $env:SHA256  Desktop_Overlay_Start.exe
           ~~~
           "@ | Set-Content -Encoding utf8 release_notes.md
       - name: Publish GitHub release
