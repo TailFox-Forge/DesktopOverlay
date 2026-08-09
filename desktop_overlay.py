@@ -1167,11 +1167,55 @@ def win32_user32():
     return getattr(windll, "user32", None) if windll else None
 
 
+def window_long_getter(user32):
+    getter = getattr(user32, "GetWindowLongPtrW", None)
+    if getter:
+        getter.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+        getter.restype = ctypes.c_ssize_t
+        return getter
+    getter = getattr(user32, "GetWindowLongW", None)
+    if getter:
+        getter.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+        getter.restype = ctypes.c_long
+        return getter
+    return None
+
+
+def window_long_setter(user32):
+    setter = getattr(user32, "SetWindowLongPtrW", None)
+    if setter:
+        setter.argtypes = [ctypes.wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+        setter.restype = ctypes.c_ssize_t
+        return setter
+    setter = getattr(user32, "SetWindowLongW", None)
+    if setter:
+        setter.argtypes = [ctypes.wintypes.HWND, ctypes.c_int, ctypes.c_long]
+        setter.restype = ctypes.c_long
+        return setter
+    return None
+
+
+def set_window_pos_func(user32):
+    set_pos = getattr(user32, "SetWindowPos", None)
+    if set_pos:
+        set_pos.argtypes = [
+            ctypes.wintypes.HWND,
+            ctypes.wintypes.HWND,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint,
+        ]
+        set_pos.restype = ctypes.wintypes.BOOL
+    return set_pos
+
+
 def window_exstyle(hwnd):
     user32 = win32_user32()
     if not user32:
         return None
-    getter = getattr(user32, "GetWindowLongPtrW", None) or getattr(user32, "GetWindowLongW", None)
+    getter = window_long_getter(user32)
     if not getter:
         return None
     return int(getter(hwnd, GWL_EXSTYLE))
@@ -1181,11 +1225,11 @@ def set_window_exstyle(hwnd, exstyle):
     user32 = win32_user32()
     if not user32:
         return False
-    setter = getattr(user32, "SetWindowLongPtrW", None) or getattr(user32, "SetWindowLongW", None)
+    setter = window_long_setter(user32)
     if not setter:
         return False
     setter(hwnd, GWL_EXSTYLE, int(exstyle))
-    set_pos = getattr(user32, "SetWindowPos", None)
+    set_pos = set_window_pos_func(user32)
     if set_pos:
         set_pos(hwnd, None, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
@@ -1779,13 +1823,16 @@ class Pet(QtWidgets.QWidget):
     def apply_click_through_style(self):
         if sys.platform != "win32":
             return
-        hwnd = int(self.winId())
-        current = window_exstyle(hwnd)
-        if current is None:
+        try:
+            hwnd = int(self.winId())
+            current = window_exstyle(hwnd)
+            if current is None:
+                return
+            desired = click_through_exstyle(current, bool(self.cfg.get("click_through")))
+            if desired != current:
+                set_window_exstyle(hwnd, desired)
+        except Exception:
             return
-        desired = click_through_exstyle(current, bool(self.cfg.get("click_through")))
-        if desired != current:
-            set_window_exstyle(hwnd, desired)
 
     def toggle_visible(self):
         """방송 중 즉시 감추기. 트레이 아이콘은 남아 있어 언제든 되돌릴 수 있다."""

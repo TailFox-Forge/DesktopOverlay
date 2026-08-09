@@ -1403,6 +1403,67 @@ def test_click_through_exstyle_toggles_transparent_bit(overlay_module):
     assert disabled & base
 
 
+class FakeWin32Function:
+    def __init__(self, value=0):
+        self.value = value
+        self.calls = []
+        self.argtypes = None
+        self.restype = None
+
+    def __call__(self, *args):
+        self.calls.append(args)
+        return self.value
+
+
+class FakeUser32:
+    def __init__(self):
+        self.GetWindowLongPtrW = FakeWin32Function(0x40)
+        self.SetWindowLongPtrW = FakeWin32Function(1)
+        self.SetWindowPos = FakeWin32Function(1)
+
+
+def test_click_through_win32_calls_declare_ctypes_contracts(overlay_module, monkeypatch):
+    mod = overlay_module
+    user32 = FakeUser32()
+    monkeypatch.setattr(mod, "win32_user32", lambda: user32)
+
+    assert mod.window_exstyle(123) == 0x40
+    assert user32.GetWindowLongPtrW.argtypes == [mod.ctypes.wintypes.HWND, mod.ctypes.c_int]
+    assert user32.GetWindowLongPtrW.restype == mod.ctypes.c_ssize_t
+
+    assert mod.set_window_exstyle(123, 0x60) is True
+    assert user32.SetWindowLongPtrW.argtypes == [
+        mod.ctypes.wintypes.HWND,
+        mod.ctypes.c_int,
+        mod.ctypes.c_ssize_t,
+    ]
+    assert user32.SetWindowLongPtrW.restype == mod.ctypes.c_ssize_t
+    assert user32.SetWindowPos.argtypes == [
+        mod.ctypes.wintypes.HWND,
+        mod.ctypes.wintypes.HWND,
+        mod.ctypes.c_int,
+        mod.ctypes.c_int,
+        mod.ctypes.c_int,
+        mod.ctypes.c_int,
+        mod.ctypes.c_uint,
+    ]
+    assert user32.SetWindowPos.restype == mod.ctypes.wintypes.BOOL
+
+
+def test_click_through_style_failure_does_not_crash(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    cfg = dict(mod.DEFAULTS)
+    pet = mod.Pet(cfg)
+
+    try:
+        monkeypatch.setattr(mod.sys, "platform", "win32")
+        monkeypatch.setattr(mod, "window_exstyle", lambda _hwnd: (_ for _ in ()).throw(OverflowError("bad hwnd")))
+
+        pet.apply_click_through_style()
+    finally:
+        pet.close()
+
+
 def test_click_through_config_applies_native_style_without_rebuild(qapp, overlay_module, monkeypatch):
     mod = overlay_module
     cfg = dict(mod.DEFAULTS)
