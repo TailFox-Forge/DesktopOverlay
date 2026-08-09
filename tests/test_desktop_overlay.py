@@ -227,20 +227,107 @@ def test_remove_startup_shortcut_deletes_link(overlay_module, tmp_path):
     assert not shortcut.exists()
 
 
-def test_startup_state_does_not_read_shortcut_synchronously(overlay_module, tmp_path, monkeypatch):
+def test_network_path_is_not_probed_on_startup(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    network_path = r"\\offline-server\share\overlay.gif"
+    loaded = []
+
+    def fake_exists(path):
+        if str(path).startswith("\\\\"):
+            raise AssertionError("network path was probed on UI thread")
+        return False
+
+    monkeypatch.setattr(mod.os.path, "exists", fake_exists)
+    monkeypatch.setattr(mod.Pet, "load_image", lambda self, path: loaded.append(path))
+    cfg = dict(mod.DEFAULTS)
+    cfg["path"] = network_path
+
+    pet = mod.Pet(cfg)
+
+    try:
+        assert loaded == [network_path]
+        assert pet.need_image is None
+    finally:
+        pet.close()
+
+
+def test_path_exists_without_network_probe_returns_unknown_for_unc(overlay_module, monkeypatch):
+    mod = overlay_module
+
+    monkeypatch.setattr(
+        mod.os.path,
+        "exists",
+        lambda path: (_ for _ in ()).throw(AssertionError("network path was probed")))
+
+    assert mod.path_exists_without_network_probe(r"\\offline-server\share\x.png") is None
+
+
+def test_startup_state_only_checks_shortcut_existence(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     startup = tmp_path / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
     startup.mkdir(parents=True)
     (startup / "DesktopOverlay.lnk").write_text("old", encoding="utf-8")
     monkeypatch.setattr(mod.os, "name", "nt")
     monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
-    monkeypatch.setattr(mod, "startup_shortcut_matches_current", lambda path: (_ for _ in ()).throw(AssertionError))
 
     state = mod.startup_state()
 
     assert state["supported"]
     assert state["exists"]
     assert state["matches"]
+
+
+def test_startup_worker_reports_create_result(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "create_startup_shortcut", lambda: r"C:\Startup\DesktopOverlay.lnk")
+    worker = mod.StartupWorker(3, True)
+    results = []
+    failures = []
+    worker.finished.connect(lambda job_id, enabled, path: results.append((job_id, enabled, path)))
+    worker.failed.connect(lambda job_id, enabled, message: failures.append((job_id, enabled, message)))
+
+    worker.run()
+
+    assert results == [(3, True, r"C:\Startup\DesktopOverlay.lnk")]
+    assert failures == []
+
+
+def test_shutdown_waits_for_startup_worker_timeout_budget(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+
+    class FakeThread:
+        def __init__(self):
+            self.quit_called = False
+            self.wait_timeouts = []
+
+        def quit(self):
+            self.quit_called = True
+
+        def wait(self, timeout_ms):
+            self.wait_timeouts.append(timeout_ms)
+            return True
+
+    cfg = dict(mod.DEFAULTS)
+    pet = mod.Pet(cfg)
+    startup_thread = FakeThread()
+    update_thread = FakeThread()
+
+    try:
+        pet._startup_workers = [(object(), startup_thread)]
+        pet._update_workers = [(object(), update_thread)]
+
+        pet.shutdown()
+
+        assert startup_thread.quit_called
+        assert startup_thread.wait_timeouts == [
+            (mod.STARTUP_COMMAND_TIMEOUT_SEC + 2) * 1000
+        ]
+        assert update_thread.wait_timeouts == [
+            (mod.UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000
+        ]
+    finally:
+        pet.close()
 
 
 def test_outside_region_keeps_enclosed_area_outside_false(overlay_module):
@@ -255,6 +342,24 @@ def test_outside_region_keeps_enclosed_area_outside_false(overlay_module):
 
     assert outside[0, 0]
     assert not outside[3, 3]
+
+
+def test_outside_region_can_be_cancelled(overlay_module):
+    mod = overlay_module
+    passable = np.ones((7, 7), dtype=bool)
+
+    with pytest.raises(mod.WorkerCancelled):
+        mod.outside_region(
+            passable,
+            cancel_check=lambda: (_ for _ in ()).throw(mod.WorkerCancelled()))
+
+
+def test_outside_region_has_iteration_limit(overlay_module):
+    mod = overlay_module
+    passable = np.ones((7, 7), dtype=bool)
+
+    with pytest.raises(RuntimeError, match="너무 오래"):
+        mod.outside_region(passable, max_iterations=0)
 
 
 def test_transparent_border_is_preserved(overlay_module):
@@ -298,7 +403,7 @@ def test_fetch_latest_release_rejects_prerelease_tag(overlay_module, monkeypatch
         def __exit__(self, *_args):
             return False
 
-        def read(self):
+        def read(self, *_args):
             return json.dumps({"tag_name": "v1.0.0-rc1"}).encode("utf-8")
 
     monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
@@ -317,13 +422,66 @@ def test_fetch_latest_release_rejects_unparseable_tag(overlay_module, monkeypatc
         def __exit__(self, *_args):
             return False
 
-        def read(self):
+        def read(self, *_args):
             return json.dumps({"tag_name": "v1.0.0.final"}).encode("utf-8")
 
     monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
 
     with pytest.raises(ValueError, match="태그 형식"):
         mod.fetch_latest_release()
+
+
+def test_fetch_latest_release_sanitizes_untrusted_release_url(overlay_module, monkeypatch):
+    mod = overlay_module
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, *_args):
+            return json.dumps({
+                "tag_name": "v9.9.9",
+                "html_url": "file:///C:/Windows/System32/calc.exe",
+            }).encode("utf-8")
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    result = mod.fetch_latest_release()
+
+    assert result["url"] == mod.RELEASES_LATEST_URL
+    assert result["newer"]
+
+
+def test_fetch_latest_release_limits_response_size(overlay_module, monkeypatch):
+    mod = overlay_module
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size=-1):
+            return b"x" * int(size)
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    with pytest.raises(ValueError, match="응답이 너무 큽니다"):
+        mod.fetch_latest_release()
+
+
+def test_open_repository_page_uses_project_url(overlay_module, monkeypatch):
+    mod = overlay_module
+    opened = []
+    monkeypatch.setattr(mod.QtGui.QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
+
+    mod.open_repository_page()
+
+    assert opened == [mod.REPOSITORY_URL]
 
 
 def test_update_worker_reports_unexpected_errors(overlay_module):
@@ -385,6 +543,52 @@ def test_read_frames_limits_gif_after_downscale(overlay_module, tmp_path, monkey
     assert metadata["frame_limit"] == 4
     assert len(loaded) == 4
     assert all(frame.shape == (5, 5, 4) for frame, _delay in loaded)
+
+
+def test_read_frames_rejects_source_pixels_before_decode(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "MAX_SOURCE_PIXELS", 100)
+    path = tmp_path / "too-large.png"
+    mod.Image.new("RGBA", (20, 20), (255, 0, 0, 255)).save(path)
+
+    with pytest.raises(ValueError, match="허용 한도"):
+        mod.read_frames(str(path))
+
+
+def test_read_frames_closes_image_file(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    path = tmp_path / "sample.png"
+    mod.Image.new("RGBA", (4, 4), (255, 0, 0, 255)).save(path)
+    real_open = mod.Image.open
+    opened = []
+
+    class ImageProxy:
+        def __init__(self, image):
+            self.image = image
+            self.closed = False
+
+        def __enter__(self):
+            return self.image
+
+        def __exit__(self, *_args):
+            self.closed = True
+            self.image.close()
+            return False
+
+        def __getattr__(self, name):
+            return getattr(self.image, name)
+
+    def open_proxy(*args, **kwargs):
+        proxy = ImageProxy(real_open(*args, **kwargs))
+        opened.append(proxy)
+        return proxy
+
+    monkeypatch.setattr(mod.Image, "open", open_proxy)
+
+    frames = mod.read_frames(str(path))
+
+    assert frames
+    assert opened[0].closed
 
 
 def test_render_frame_arrays_can_be_cancelled(overlay_module):

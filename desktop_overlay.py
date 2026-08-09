@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import numpy as np
@@ -26,9 +27,12 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
 APP_VERSION = "0.3.4"
+REPOSITORY_URL = "https://github.com/TailFox-Forge/DesktopOverlay"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
+UPDATE_RESPONSE_MAX_BYTES = 1_000_000
+STARTUP_COMMAND_TIMEOUT_SEC = 15
 RESAMPLE_LANCZOS = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
 
 # PyInstaller onefile 로 묶으면 __file__ 은 임시 압축 해제 폴더를 가리킨다.
@@ -47,10 +51,13 @@ IMAGE_FILTER = "이미지 (*.gif *.png *.jpg *.jpeg *.webp *.bmp);;모든 파일
 STARTUP_SHORTCUT_NAME = "%s.lnk" % APP_NAME
 MIN_SIZE = 48      # 이보다 작아지면 우클릭 메뉴조차 열기 어려워진다
 MAX_SIZE = 4000
+MAX_SOURCE_PIXELS = 40_000_000
 MAX_FRAME_PIXELS = 4_000_000
 MAX_GIF_FRAMES = 180
 MAX_GIF_TOTAL_PIXELS = 100_000_000
+MAX_OUTSIDE_SWEEP_ITERATIONS = 10_000
 PROCESSING_TOOLTIP = "%s - 이미지 처리 중..." % APP_NAME
+Image.MAX_IMAGE_PIXELS = MAX_SOURCE_PIXELS
 
 DEFAULTS = {
     "path": "",
@@ -237,7 +244,7 @@ def run_powershell(script):
                 input=script,
                 text=True,
                 capture_output=True,
-                timeout=15,
+                timeout=STARTUP_COMMAND_TIMEOUT_SEC,
                 creationflags=flags,
             )
         except FileNotFoundError as exc:
@@ -248,32 +255,6 @@ def run_powershell(script):
             raise RuntimeError(message or "PowerShell 실행에 실패했습니다.")
         return result.stdout.strip()
     raise RuntimeError("PowerShell을 찾을 수 없습니다. %s" % last_error)
-
-
-def read_startup_shortcut(shortcut_path=None):
-    shortcut_path = shortcut_path or startup_shortcut_path()
-    if os.name != "nt" or not shortcut_path or not os.path.exists(shortcut_path):
-        return None
-    script = "\n".join([
-        "$shortcutPath = %s" % ps_quote(shortcut_path),
-        "$shell = New-Object -ComObject WScript.Shell",
-        "$shortcut = $shell.CreateShortcut($shortcutPath)",
-        "$data = @{ TargetPath = $shortcut.TargetPath; Arguments = $shortcut.Arguments }",
-        "$data | ConvertTo-Json -Compress",
-    ])
-    output = run_powershell(script)
-    return json.loads(output) if output else None
-
-
-def startup_shortcut_matches_current(shortcut_path=None):
-    info = read_startup_shortcut(shortcut_path)
-    if not info:
-        return False
-    target, arguments, _working_dir = current_startup_target()
-    actual_target = os.path.normcase(os.path.abspath(info.get("TargetPath") or ""))
-    expected_target = os.path.normcase(os.path.abspath(target))
-    actual_arguments = (info.get("Arguments") or "").strip()
-    return actual_target == expected_target and actual_arguments == arguments.strip()
 
 
 def startup_state():
@@ -327,6 +308,19 @@ def remove_startup_shortcut(shortcut_path=None):
     if shortcut_path and os.path.exists(shortcut_path):
         os.remove(shortcut_path)
     return shortcut_path
+
+
+def is_network_path(path):
+    text = str(path or "")
+    return text.startswith("\\\\") or text.startswith("//")
+
+
+def path_exists_without_network_probe(path):
+    if not path:
+        return False
+    if is_network_path(path):
+        return None
+    return os.path.exists(path)
 
 
 def normalize_hotkeys(value):
@@ -717,6 +711,18 @@ def is_newer_version(latest_tag, current_version=APP_VERSION):
     return bool(compared and compared > 0)
 
 
+def safe_release_url(url):
+    parsed = urllib.parse.urlparse(str(url or ""))
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if (
+            parsed.scheme == "https"
+            and host in ("github.com", "www.github.com")
+            and path.startswith("/tailfox-forge/desktopoverlay/releases/")):
+        return str(url)
+    return RELEASES_LATEST_URL
+
+
 def fetch_latest_release():
     req = urllib.request.Request(
         RELEASES_LATEST_API,
@@ -726,7 +732,10 @@ def fetch_latest_release():
         },
     )
     with urllib.request.urlopen(req, timeout=UPDATE_CHECK_TIMEOUT_SEC) as response:
-        data = json.loads(response.read().decode("utf-8"))
+        raw = response.read(UPDATE_RESPONSE_MAX_BYTES + 1)
+    if len(raw) > UPDATE_RESPONSE_MAX_BYTES:
+        raise ValueError("업데이트 응답이 너무 큽니다.")
+    data = json.loads(raw.decode("utf-8"))
     tag = data.get("tag_name") or ""
     parsed = parse_version(tag)
     if not parsed:
@@ -736,9 +745,13 @@ def fetch_latest_release():
     return {
         "tag": tag,
         "name": data.get("name") or tag,
-        "url": data.get("html_url") or RELEASES_LATEST_URL,
+        "url": safe_release_url(data.get("html_url")),
         "newer": is_newer_version(tag),
     }
+
+
+def open_repository_page():
+    QtGui.QDesktopServices.openUrl(QtCore.QUrl(REPOSITORY_URL))
 
 
 # ---------------------------------------------------------------- 이미지 처리
@@ -750,6 +763,15 @@ def fit_size_within_pixels(width, height, max_pixels=None):
         return int(width), int(height)
     scale = (float(max_pixels) / float(pixels)) ** 0.5
     return max(1, int(round(width * scale))), max(1, int(round(height * scale)))
+
+
+def validate_source_pixels(width, height):
+    pixels = max(1, int(width) * int(height))
+    if pixels > MAX_SOURCE_PIXELS:
+        raise ValueError(
+            "이미지가 너무 큽니다. %dpx는 허용 한도 %dpx를 초과합니다."
+            % (pixels, MAX_SOURCE_PIXELS))
+    return pixels
 
 
 def frame_limit_for_image(width, height):
@@ -787,53 +809,54 @@ def frame_to_array(image, metadata=None):
 
 def read_frames(path, metadata=None, cancel_check=None):
     """어떤 이미지든 (RGBA numpy 배열, 지속시간ms) 목록으로 읽는다."""
-    im = Image.open(path)
     frames = []
-    if getattr(im, "is_animated", False):
-        last = None
-        total = int(getattr(im, "n_frames", 0) or 0)
-        stored_w, stored_h = fit_size_within_pixels(im.size[0], im.size[1])
-        frame_limit = frame_limit_for_image(stored_w, stored_h)
-        selected = selected_frame_indices(total, frame_limit) if total else None
-        pending_delay = 0
-        source_count = 0
-        for index, frame in enumerate(ImageSequence.Iterator(im)):
+    with Image.open(path) as im:
+        source_pixels = validate_source_pixels(im.size[0], im.size[1])
+        if getattr(im, "is_animated", False):
+            last = None
+            total = int(getattr(im, "n_frames", 0) or 0)
+            stored_w, stored_h = fit_size_within_pixels(im.size[0], im.size[1])
+            frame_limit = frame_limit_for_image(stored_w, stored_h)
+            selected = selected_frame_indices(total, frame_limit) if total else None
+            pending_delay = 0
+            source_count = 0
+            for index, frame in enumerate(ImageSequence.Iterator(im)):
+                if cancel_check:
+                    cancel_check()
+                source_count += 1
+                cur = frame.convert("RGBA")
+                if last is not None and frame.tile:
+                    # 부분 갱신 프레임이면 이전 프레임 위에 합성
+                    merged = last.copy()
+                    merged.alpha_composite(cur)
+                    cur = merged
+                last = cur
+                delay = frame.info.get("duration", 100) or 100
+                delay = max(20, int(delay))
+                if selected is None or index in selected:
+                    frames.append((frame_to_array(cur, metadata), pending_delay + delay))
+                    pending_delay = 0
+                else:
+                    pending_delay += delay
+            if pending_delay and frames:
+                frame, delay = frames[-1]
+                frames[-1] = (frame, delay + pending_delay)
+            if metadata is not None:
+                metadata["source_frame_count"] = source_count
+                metadata["stored_frame_count"] = len(frames)
+                metadata["frame_limit"] = frame_limit
+                metadata["dropped_frames"] = max(0, source_count - len(frames))
+                metadata["source_pixels"] = source_pixels
+                metadata["stored_pixels"] = int(stored_w) * int(stored_h)
+                metadata["total_pixel_limit"] = MAX_GIF_TOTAL_PIXELS
+        else:
             if cancel_check:
                 cancel_check()
-            source_count += 1
-            cur = frame.convert("RGBA")
-            if last is not None and frame.tile:
-                # 부분 갱신 프레임이면 이전 프레임 위에 합성
-                merged = last.copy()
-                merged.alpha_composite(cur)
-                cur = merged
-            last = cur
-            delay = frame.info.get("duration", 100) or 100
-            delay = max(20, int(delay))
-            if selected is None or index in selected:
-                frames.append((frame_to_array(cur, metadata), pending_delay + delay))
-                pending_delay = 0
-            else:
-                pending_delay += delay
-        if pending_delay and frames:
-            frame, delay = frames[-1]
-            frames[-1] = (frame, delay + pending_delay)
-        if metadata is not None:
-            metadata["source_frame_count"] = source_count
-            metadata["stored_frame_count"] = len(frames)
-            metadata["frame_limit"] = frame_limit
-            metadata["dropped_frames"] = max(0, source_count - len(frames))
-            metadata["source_pixels"] = int(im.size[0]) * int(im.size[1])
-            metadata["stored_pixels"] = int(stored_w) * int(stored_h)
-            metadata["total_pixel_limit"] = MAX_GIF_TOTAL_PIXELS
-    else:
-        if cancel_check:
-            cancel_check()
-        frames.append((frame_to_array(im.convert("RGBA"), metadata), 100))
-        if metadata is not None:
-            metadata["source_frame_count"] = 1
-            metadata["stored_frame_count"] = 1
-            metadata["dropped_frames"] = 0
+            frames.append((frame_to_array(im.convert("RGBA"), metadata), 100))
+            if metadata is not None:
+                metadata["source_frame_count"] = 1
+                metadata["stored_frame_count"] = 1
+                metadata["dropped_frames"] = 0
     return frames
 
 
@@ -879,18 +902,22 @@ def edge_strength(rgb):
     return e
 
 
-def outside_region(passable):
+def outside_region(passable, cancel_check=None, max_iterations=None):
     """이미지 가장자리에서 passable 을 따라 이어진 영역만 True.
     캐릭터 외곽선은 passable 이 아니므로 채우기가 안쪽으로 못 들어간다.
     행/열 단위 전파로 연결 영역을 찾는다. 픽셀별 파이썬 루프보다 큰 GIF에서 훨씬 빠르다."""
     h, w = passable.shape
+    if max_iterations is None:
+        max_iterations = min(MAX_OUTSIDE_SWEEP_ITERATIONS, max(32, h + w))
     filled = np.zeros((h, w), dtype=bool)
     filled[0, :] = passable[0, :]
     filled[-1, :] |= passable[-1, :]
     filled[:, 0] |= passable[:, 0]
     filled[:, -1] |= passable[:, -1]
 
-    while True:
+    for _iteration in range(max_iterations):
+        if cancel_check:
+            cancel_check()
         old = filled.copy()
         for _ in range(2):
             for x in range(1, w):
@@ -902,12 +929,12 @@ def outside_region(passable):
             for y in range(h - 2, -1, -1):
                 filled[y, :] |= filled[y + 1, :] & passable[y, :]
         if np.array_equal(old, filled):
-            break
-    return filled
+            return filled
+    raise RuntimeError("배경 영역 탐색이 너무 오래 걸려 중단했습니다.")
 
 
 def key_out(rgba, bg, tolerance, softness, despill, edge_only=True, edge_thresh=14,
-            holes=True):
+            holes=True, cancel_check=None):
     """캐릭터 외곽선 바깥쪽을 투명하게. 반환: RGBA uint8"""
     if already_transparent(rgba):
         return rgba          # 이미 배경이 투명하다 - 그대로 둔다
@@ -924,7 +951,7 @@ def key_out(rgba, bg, tolerance, softness, despill, edge_only=True, edge_thresh=
     if edge_only:
         # 배경색과 비슷하면서 & 외곽선이 아닌 픽셀만 채우기가 지나갈 수 있다
         passable = (dist < hi) & (edge_strength(rgb) < float(edge_thresh))
-        outside = outside_region(passable)
+        outside = outside_region(passable, cancel_check)
 
         alpha = np.where(outside, 0.0, 1.0)
         # 바깥과 맞닿은 픽셀만 원래의 부드러운 알파를 써서 계단현상을 줄인다
@@ -990,7 +1017,8 @@ def render_frame_arrays(frames, cfg, bg_color=None, cancel_check=None):
             cancel_check()
         rendered.append((
             key_out(frame, bg, cfg["tolerance"], cfg["softness"],
-                    cfg["despill"], cfg["edge_only"], cfg["edge_thresh"], cfg["holes"]),
+                    cfg["despill"], cfg["edge_only"], cfg["edge_thresh"], cfg["holes"],
+                    cancel_check),
             delay,
         ))
     return rendered
@@ -1065,6 +1093,24 @@ class UpdateCheckWorker(QtCore.QObject):
             self.finished.emit(self.job_id, fetch_latest_release(), self.silent)
         except Exception as e:
             self.failed.emit(self.job_id, str(e), self.silent)
+
+
+class StartupWorker(QtCore.QObject):
+    finished = QtCore.pyqtSignal(int, bool, str)
+    failed = QtCore.pyqtSignal(int, bool, str)
+
+    def __init__(self, job_id, enabled):
+        super().__init__()
+        self.job_id = job_id
+        self.enabled = bool(enabled)
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        try:
+            path = create_startup_shortcut() if self.enabled else remove_startup_shortcut()
+            self.finished.emit(self.job_id, self.enabled, path or "")
+        except Exception as e:
+            self.failed.emit(self.job_id, self.enabled, str(e))
 
 
 # ---------------------------------------------------------------- 오버레이 창
@@ -1423,6 +1469,9 @@ class Pet(QtWidgets.QWidget):
         self._workers = []
         self._update_job_id = 0
         self._update_workers = []
+        self._startup_job_id = 0
+        self._startup_workers = []
+        self.startup_changing = False
         self.update_checking = False
         self.update_available = False
         self.latest_release = None
@@ -1454,14 +1503,15 @@ class Pet(QtWidgets.QWidget):
         self.move(cfg["x"], cfg["y"])
         # 이미지가 없으면 파일 대화상자를 곧바로 띄우지 않는다.
         # 트레이 아이콘이 준비된 뒤 알림으로 안내한다 (main 에서 prompt_if_no_image 호출).
-        if startup_missing_path and cfg["path"] and os.path.exists(cfg["path"]):
+        saved_path_exists = path_exists_without_network_probe(cfg["path"])
+        if startup_missing_path and cfg["path"] and saved_path_exists is True:
             self.load_image(cfg["path"])
         elif startup_missing_path:
             self.need_image = "missing"
             self.missing_image_path = startup_missing_path
         elif not cfg["path"]:
             self.need_image = "first"
-        elif not os.path.exists(cfg["path"]):
+        elif saved_path_exists is False:
             self.need_image = "missing"
             self.missing_image_path = cfg["path"]
         else:
@@ -1634,7 +1684,7 @@ class Pet(QtWidgets.QWidget):
         QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
 
     def pick_file(self):
-        start = self.cfg["path"] if os.path.exists(self.cfg["path"] or "") else os.path.expanduser("~")
+        start = self.cfg["path"] if path_exists_without_network_probe(self.cfg["path"]) is True else os.path.expanduser("~")
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             None, "띄울 이미지 선택", start, IMAGE_FILTER)
         if path:
@@ -1945,6 +1995,8 @@ class Pet(QtWidgets.QWidget):
         dlg.exec_()
 
     def add_update_menu(self, parent):
+        parent.addAction("GitHub 저장소 열기", open_repository_page)
+        parent.addSeparator()
         if self.update_available and self.latest_release:
             tag = self.latest_release.get("tag") or "새 버전"
             parent.addAction("● 업데이트 있음: %s 열기" % tag, self.open_update_page)
@@ -1964,6 +2016,10 @@ class Pet(QtWidgets.QWidget):
             err.setEnabled(False)
 
     def add_startup_menu(self, parent):
+        if self.startup_changing:
+            action = parent.addAction("윈도우 시작 시 자동 실행 적용 중…")
+            action.setEnabled(False)
+            return
         state = startup_state()
         if not state["supported"]:
             action = parent.addAction("윈도우 시작 시 자동 실행")
@@ -1979,26 +2035,69 @@ class Pet(QtWidgets.QWidget):
             parent.addAction("자동 실행 경로 갱신", lambda: self.set_startup_enabled(True))
 
     def set_startup_enabled(self, enabled):
-        try:
-            if enabled:
-                path = create_startup_shortcut()
-                title = "자동 실행 설정"
-                body = "윈도우 시작프로그램 폴더에 바로가기를 만들었습니다.\n%s" % path
-            else:
-                path = remove_startup_shortcut()
-                title = "자동 실행 해제"
-                body = "윈도우 시작프로그램 폴더의 바로가기를 삭제했습니다.\n%s" % path
-            if self.tray:
-                self.tray.showMessage(title, body, QtWidgets.QSystemTrayIcon.Information, 8000)
-        except Exception as exc:
+        if self.startup_changing:
             if self.tray:
                 self.tray.showMessage(
-                    "자동 실행 설정 실패",
-                    str(exc),
-                    QtWidgets.QSystemTrayIcon.Warning,
-                    10000)
-            else:
-                QtWidgets.QMessageBox.warning(None, "자동 실행 설정 실패", str(exc))
+                    "자동 실행 설정",
+                    "이미 자동 실행 설정을 적용하는 중입니다.",
+                    QtWidgets.QSystemTrayIcon.Information,
+                    5000)
+            return
+        self._startup_job_id += 1
+        job_id = self._startup_job_id
+        self.startup_changing = True
+
+        thread = QtCore.QThread(self)
+        worker = StartupWorker(job_id, enabled)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.on_startup_finished)
+        worker.failed.connect(self.on_startup_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(lambda w=worker, t=thread: self.cleanup_startup_worker(w, t))
+        self._startup_workers.append((worker, thread))
+        thread.start()
+
+    def cleanup_startup_worker(self, worker, thread):
+        self._startup_workers = [
+            (w, t) for w, t in self._startup_workers
+            if w is not worker and t is not thread
+        ]
+        worker.deleteLater()
+        thread.deleteLater()
+
+    def on_startup_finished(self, job_id, enabled, path):
+        if job_id != self._startup_job_id:
+            return
+        self.startup_changing = False
+        if not self.tray:
+            return
+        if enabled:
+            self.tray.showMessage(
+                "자동 실행 설정",
+                "윈도우 시작프로그램 폴더에 바로가기를 만들었습니다.\n%s" % path,
+                QtWidgets.QSystemTrayIcon.Information,
+                8000)
+        else:
+            self.tray.showMessage(
+                "자동 실행 해제",
+                "윈도우 시작프로그램 폴더의 바로가기를 삭제했습니다.\n%s" % path,
+                QtWidgets.QSystemTrayIcon.Information,
+                8000)
+
+    def on_startup_failed(self, job_id, _enabled, message):
+        if job_id != self._startup_job_id:
+            return
+        self.startup_changing = False
+        if self.tray:
+            self.tray.showMessage(
+                "자동 실행 설정 실패",
+                message,
+                QtWidgets.QSystemTrayIcon.Warning,
+                10000)
+        else:
+            QtWidgets.QMessageBox.warning(None, "자동 실행 설정 실패", message)
 
     def center_on_screen(self):
         self.snap_to(QtWidgets.QApplication.primaryScreen(), 1, 1)
@@ -2158,6 +2257,9 @@ class Pet(QtWidgets.QWidget):
         for _worker, thread in list(self._update_workers):
             thread.quit()
             thread.wait((UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000)
+        for _worker, thread in list(self._startup_workers):
+            thread.quit()
+            thread.wait((STARTUP_COMMAND_TIMEOUT_SEC + 2) * 1000)
 
     def hotkey_target_screen(self):
         wanted = self.cfg.get("hotkey_screen") or ""

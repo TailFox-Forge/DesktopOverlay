@@ -12,8 +12,8 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.10"
       - name: Verify version metadata
@@ -43,7 +43,7 @@ jobs:
 
           Write-Host "APP_VERSION=$appVersion, README 변경 내역 확인 완료"
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt -r requirements-build.txt
+        run: python -m pip install -r requirements-release.txt
       - name: Compile
         run: python -m py_compile desktop_overlay.py
       - name: Test
@@ -70,35 +70,48 @@ jobs:
         run: |
           $hash = (Get-FileHash dist\Desktop_Overlay_Start.exe -Algorithm SHA256).Hash.ToLower()
           "sha256=$hash" >> $env:GITHUB_OUTPUT
+      - name: Validate release tag
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Release tag must match vX.Y.Z. Actual: $env:TAG"
+          }
       - name: Write release notes
         shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
         run: |
-          $tag = "${{ github.ref_name }}"
+          $changelog = Get-Content CHANGELOG.md -Raw -Encoding utf8
+          $escapedTag = [regex]::Escape($env:TAG)
+          $pattern = "(?ms)^## \[$escapedTag\]\([^\r\n]+\)\s*(?<body>.*?)(?=^## \[v|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if (-not $match.Success) {
+            throw "CHANGELOG.md does not contain release notes for $env:TAG"
+          }
+          $body = $match.Groups["body"].Value.Trim()
           @"
-          ## DesktopOverlay $tag
+          ## DesktopOverlay $env:TAG
 
-          변경 사항:
-          - 단축키 설정창의 캡처 UI 도 config.json 정규화와 같은 예약 조합 판정을 사용합니다.
-          - Ctrl+Tab, Ctrl+Shift+Tab 을 설정창에서도 등록할 수 있게 했습니다.
-          - Alt+Tab, Ctrl+Esc, Ctrl+Shift+Esc 는 설정창에서도 계속 거부합니다.
-          - 수식어 없는 Esc 의 캡처 취소 동작은 유지했습니다.
-          - 캡처 UI 전용 회귀 테스트를 추가했습니다.
+          $body
 
           SHA256:
           ~~~text
-          ${{ steps.hash.outputs.sha256 }}  Desktop_Overlay_Start.exe
+          $env:SHA256  Desktop_Overlay_Start.exe
           ~~~
           "@ | Set-Content -Encoding utf8 release_notes.md
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          gh release view $tag *> $null
+          gh release view $env:TAG *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $tag --title "$tag" --notes-file release_notes.md
-            gh release upload $tag dist\Desktop_Overlay_Start.exe --clobber
+            gh release edit $env:TAG --title "$env:TAG" --notes-file release_notes.md
+            gh release upload $env:TAG dist\Desktop_Overlay_Start.exe --clobber
           } else {
-            gh release create $tag dist\Desktop_Overlay_Start.exe --title "$tag" --notes-file release_notes.md
+            gh release create $env:TAG dist\Desktop_Overlay_Start.exe --title "$env:TAG" --notes-file release_notes.md
           }
