@@ -34,6 +34,7 @@ UPDATE_CHECK_TIMEOUT_SEC = 8
 UPDATE_RESPONSE_MAX_BYTES = 1_000_000
 STARTUP_COMMAND_TIMEOUT_SEC = 15
 STARTUP_SHUTDOWN_WAIT_MS = 2500
+STARTUP_STATE_SHUTDOWN_WAIT_MS = 2500
 IMAGE_WORKER_SHUTDOWN_WAIT_MS = 2000
 RESAMPLE_LANCZOS = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
 
@@ -229,6 +230,22 @@ def current_startup_target():
     return source_python_executable(), '"%s"' % os.path.abspath(__file__), APP_DIR
 
 
+def comparable_windows_path(path):
+    text = str(path or "").strip().replace("/", "\\")
+    while len(text) > 3 and text.endswith("\\"):
+        text = text[:-1]
+    return text.lower()
+
+
+def startup_targets_match(actual_target, actual_args, actual_working_dir):
+    expected_target, expected_args, expected_working_dir = current_startup_target()
+    return (
+        comparable_windows_path(actual_target) == comparable_windows_path(expected_target)
+        and str(actual_args or "").strip() == str(expected_args or "").strip()
+        and comparable_windows_path(actual_working_dir) == comparable_windows_path(expected_working_dir)
+    )
+
+
 def source_python_executable():
     """소스 실행 자동실행은 가능하면 콘솔 없는 pythonw.exe 를 사용한다."""
     executable = os.path.abspath(sys.executable)
@@ -282,8 +299,48 @@ def startup_state():
     if not exists:
         return {"supported": True, "path": path, "exists": False, "matches": False, "error": ""}
     # 트레이 메뉴를 열 때마다 PowerShell COM 을 동기 호출하면 UI가 멈출 수 있다.
-    # 메뉴에서는 빠른 존재 여부만 보고, 경로 갱신은 명시적 메뉴 동작으로 처리한다.
-    return {"supported": True, "path": path, "exists": True, "matches": True, "error": ""}
+    # 메뉴에서는 빠른 존재 여부만 보고, 대상 경로는 별도 worker 로 확인한다.
+    return {"supported": True, "path": path, "exists": True, "matches": None, "error": ""}
+
+
+def read_startup_shortcut_details(shortcut_path=None):
+    shortcut_path = shortcut_path or startup_shortcut_path()
+    if not shortcut_path:
+        raise RuntimeError("시작프로그램 바로가기 경로를 찾을 수 없습니다.")
+    script = "\n".join([
+        "$shortcutPath = %s" % ps_quote(shortcut_path),
+        "if (-not (Test-Path -LiteralPath $shortcutPath)) { throw '바로가기를 찾을 수 없습니다.' }",
+        "$shell = New-Object -ComObject WScript.Shell",
+        "$shortcut = $shell.CreateShortcut($shortcutPath)",
+        "$result = [ordered]@{",
+        "  TargetPath = [string]$shortcut.TargetPath",
+        "  Arguments = [string]$shortcut.Arguments",
+        "  WorkingDirectory = [string]$shortcut.WorkingDirectory",
+        "}",
+        "$result | ConvertTo-Json -Compress",
+    ])
+    output = run_powershell(script)
+    data = json.loads(output)
+    return {
+        "target": data.get("TargetPath") or "",
+        "arguments": data.get("Arguments") or "",
+        "working_dir": data.get("WorkingDirectory") or "",
+    }
+
+
+def inspect_startup_state():
+    state = startup_state()
+    if not state["supported"] or not state["exists"]:
+        return state
+    details = read_startup_shortcut_details(state["path"])
+    state["target"] = details["target"]
+    state["arguments"] = details["arguments"]
+    state["working_dir"] = details["working_dir"]
+    state["matches"] = startup_targets_match(
+        details["target"],
+        details["arguments"],
+        details["working_dir"])
+    return state
 
 
 def create_startup_shortcut(shortcut_path=None):
@@ -1191,6 +1248,22 @@ class StartupWorker(QtCore.QObject):
             self.failed.emit(self.job_id, self.enabled, str(e))
 
 
+class StartupStateWorker(QtCore.QObject):
+    finished = QtCore.pyqtSignal(int, object)
+    failed = QtCore.pyqtSignal(int, str)
+
+    def __init__(self, job_id):
+        super().__init__()
+        self.job_id = job_id
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        try:
+            self.finished.emit(self.job_id, inspect_startup_state())
+        except Exception as e:
+            self.failed.emit(self.job_id, str(e))
+
+
 # ---------------------------------------------------------------- 오버레이 창
 
 class SizeDialog(QtWidgets.QDialog):
@@ -1549,6 +1622,10 @@ class Pet(QtWidgets.QWidget):
         self._update_workers = []
         self._startup_job_id = 0
         self._startup_workers = []
+        self._startup_state_job_id = 0
+        self._startup_state_workers = []
+        self.startup_state_checking = False
+        self.startup_state_cache = None
         self.startup_changing = False
         self.update_checking = False
         self.update_available = False
@@ -2137,19 +2214,82 @@ class Pet(QtWidgets.QWidget):
             action = parent.addAction("윈도우 시작 시 자동 실행 적용 중…")
             action.setEnabled(False)
             return
-        state = startup_state()
+        state = self.current_startup_state()
         if not state["supported"]:
             action = parent.addAction("윈도우 시작 시 자동 실행")
             action.setCheckable(True)
             action.setChecked(False)
             action.setEnabled(False)
             return
-        action = parent.addAction("윈도우 시작 시 자동 실행")
+        label = "윈도우 시작 시 자동 실행"
+        if state["exists"] and state.get("matches") is False:
+            label += " (경로 갱신 필요)"
+        elif state["exists"] and state.get("matches") is None:
+            label += " (경로 확인 중)"
+        action = parent.addAction(label)
         action.setCheckable(True)
-        action.setChecked(bool(state["exists"]))
+        action.setChecked(bool(state["exists"] and state.get("matches") is not False))
         action.triggered.connect(lambda checked: self.set_startup_enabled(bool(checked)))
         if state["exists"]:
-            parent.addAction("자동 실행 경로 갱신", lambda: self.set_startup_enabled(True))
+            refresh = parent.addAction("자동 실행 경로 갱신", lambda: self.set_startup_enabled(True))
+            if state.get("matches") is True:
+                refresh.setEnabled(False)
+        if state.get("error"):
+            error = parent.addAction("자동 실행 경로 확인 실패")
+            error.setEnabled(False)
+
+    def current_startup_state(self):
+        state = startup_state()
+        cache = self.startup_state_cache
+        if (
+                cache
+                and cache.get("path") == state.get("path")
+                and cache.get("exists") == state.get("exists")):
+            state.update(cache)
+        if state["supported"] and state["exists"] and state.get("matches") is None:
+            self.check_startup_state_async()
+        return state
+
+    def check_startup_state_async(self):
+        if self.startup_state_checking:
+            return
+        self._startup_state_job_id += 1
+        job_id = self._startup_state_job_id
+        self.startup_state_checking = True
+
+        thread = QtCore.QThread(self)
+        worker = StartupStateWorker(job_id)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.on_startup_state_finished)
+        worker.failed.connect(self.on_startup_state_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(lambda w=worker, t=thread: self.cleanup_startup_state_worker(w, t))
+        self._startup_state_workers.append((worker, thread))
+        thread.start()
+
+    def cleanup_startup_state_worker(self, worker, thread):
+        self._startup_state_workers = [
+            (w, t) for w, t in self._startup_state_workers
+            if w is not worker and t is not thread
+        ]
+        worker.deleteLater()
+        thread.deleteLater()
+
+    def on_startup_state_finished(self, job_id, state):
+        if job_id != self._startup_state_job_id:
+            return
+        self.startup_state_checking = False
+        self.startup_state_cache = dict(state)
+
+    def on_startup_state_failed(self, job_id, message):
+        if job_id != self._startup_state_job_id:
+            return
+        self.startup_state_checking = False
+        state = startup_state()
+        state["error"] = message
+        self.startup_state_cache = state
 
     def set_startup_enabled(self, enabled):
         if self.startup_changing:
@@ -2197,6 +2337,13 @@ class Pet(QtWidgets.QWidget):
         if job_id != self._startup_job_id:
             return
         self.startup_changing = False
+        self.startup_state_cache = {
+            "supported": os.name == "nt",
+            "path": path or startup_shortcut_path(),
+            "exists": bool(enabled),
+            "matches": bool(enabled),
+            "error": "",
+        }
         if not self.tray:
             return
         if enabled:
@@ -2384,6 +2531,8 @@ class Pet(QtWidgets.QWidget):
             wait_for_thread_or_abandon(thread, (UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000)
         for _worker, thread in list(self._startup_workers):
             wait_for_thread_or_abandon(thread, STARTUP_SHUTDOWN_WAIT_MS)
+        for _worker, thread in list(self._startup_state_workers):
+            wait_for_thread_or_abandon(thread, STARTUP_STATE_SHUTDOWN_WAIT_MS)
 
     def hotkey_target_screen(self):
         wanted = self.cfg.get("hotkey_screen") or ""

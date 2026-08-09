@@ -312,7 +312,7 @@ def test_startup_argument_uses_non_blocking_network_path_policy(overlay_module, 
     assert cfg["_startup_missing_path"] == missing_path
 
 
-def test_startup_state_only_checks_shortcut_existence(overlay_module, tmp_path, monkeypatch):
+def test_startup_state_marks_existing_shortcut_match_unknown(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     startup = tmp_path / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
     startup.mkdir(parents=True)
@@ -324,7 +324,61 @@ def test_startup_state_only_checks_shortcut_existence(overlay_module, tmp_path, 
 
     assert state["supported"]
     assert state["exists"]
-    assert state["matches"]
+    assert state["matches"] is None
+
+
+def test_inspect_startup_state_detects_matching_shortcut_target(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    startup = tmp_path / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    startup.mkdir(parents=True)
+    (startup / "DesktopOverlay.lnk").write_text("link", encoding="utf-8")
+    exe = tmp_path / "Desktop_Overlay_Start.exe"
+    exe.write_text("exe", encoding="utf-8")
+    monkeypatch.setattr(mod.os, "name", "nt")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setattr(mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(mod.sys, "executable", str(exe))
+    monkeypatch.setattr(mod, "APP_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        mod,
+        "run_powershell",
+        lambda _script: json.dumps({
+            "TargetPath": str(exe),
+            "Arguments": "",
+            "WorkingDirectory": str(tmp_path),
+        }))
+
+    state = mod.inspect_startup_state()
+
+    assert state["exists"]
+    assert state["matches"] is True
+
+
+def test_inspect_startup_state_detects_stale_shortcut_target(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    startup = tmp_path / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    startup.mkdir(parents=True)
+    (startup / "DesktopOverlay.lnk").write_text("link", encoding="utf-8")
+    exe = tmp_path / "Desktop_Overlay_Start.exe"
+    exe.write_text("exe", encoding="utf-8")
+    monkeypatch.setattr(mod.os, "name", "nt")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    monkeypatch.setattr(mod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(mod.sys, "executable", str(exe))
+    monkeypatch.setattr(mod, "APP_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        mod,
+        "run_powershell",
+        lambda _script: json.dumps({
+            "TargetPath": r"C:\old\Desktop_Overlay_Start.exe",
+            "Arguments": "",
+            "WorkingDirectory": r"C:\old",
+        }))
+
+    state = mod.inspect_startup_state()
+
+    assert state["exists"]
+    assert state["matches"] is False
 
 
 def test_startup_worker_reports_create_result(qapp, overlay_module, monkeypatch):
