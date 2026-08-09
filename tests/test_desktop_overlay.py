@@ -74,7 +74,7 @@ def test_build_script_uses_dedicated_build_venv():
 
     assert ".venv-build" in script
     assert "-m venv" in script
-    assert "\"%VENV_PY%\" -m pip install --require-hashes -r" in script
+    assert "\"%VENV_PY%\" -m pip install --require-hashes --only-binary=:all: -r" in script
     assert "\"%VENV_PY%\" -m PyInstaller" in script
     assert "python -m pip install -r requirements-release.txt" not in script
 
@@ -149,8 +149,12 @@ def test_dependency_lock_files_use_hash_verification():
     assert "pywin32-ctypes==0.2.3" in release
     assert "requirements.in" in read_repo_text("requirements.in")
     assert "requirements-release.in" in read_repo_text("requirements-release.in")
+    assert "--pip-args \"--only-binary=:all:\"" in read_repo_text("requirements.in")
+    assert "--pip-args \"--only-binary=:all:\"" in read_repo_text("requirements-release.in")
+
     for installer in (launcher, build_script, ci, release_workflow, readme):
         assert "--require-hashes" in installer
+        assert "--only-binary=:all:" in installer
 
 
 def test_ci_verifies_bad_hashes_are_rejected():
@@ -159,6 +163,7 @@ def test_ci_verifies_bad_hashes_are_rejected():
     assert "Verify pip rejects bad hashes" in ci
     assert "bad-hash-requirements.txt" in ci
     assert "colorama==0.4.6 --hash=sha256:" in ci
+    assert "--only-binary=:all:" in ci
     assert "--dry-run" in ci
     assert "sys.exit(0 if result.returncode != 0 else 1)" in ci
 

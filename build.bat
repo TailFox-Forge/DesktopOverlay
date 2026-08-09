@@ -20,7 +20,7 @@ set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
 call :ENSURE_VENV
 if errorlevel 1 goto FAIL
 
-"%VENV_PY%" -m pip install --require-hashes -r "%~dp0requirements-release.txt"
+"%VENV_PY%" -m pip install --require-hashes --only-binary=:all: -r "%~dp0requirements-release.txt"
 if errorlevel 1 goto FAIL
 
 "%VENV_PY%" -m PyInstaller --noconfirm --onedir --windowed ^

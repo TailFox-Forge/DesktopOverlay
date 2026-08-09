@@ -1,6 +1,6 @@
 # 소스 실행용 런타임 의존성 입력 파일.
 # 변경 후 아래 명령으로 requirements.txt 를 재생성한다.
-# python -m piptools compile --generate-hashes --allow-unsafe --strip-extras --no-header --no-emit-index-url -o requirements.txt requirements.in
+# python -m piptools compile --generate-hashes --allow-unsafe --strip-extras --no-header --no-emit-index-url --pip-args "--only-binary=:all:" -o requirements.txt requirements.in
 numpy==2.2.6
 pillow==12.2.0
 PyQt5==5.15.11

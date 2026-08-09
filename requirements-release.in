@@ -1,6 +1,6 @@
 # GitHub Release/CI 빌드 의존성 입력 파일.
 # 변경 후 아래 명령으로 requirements-release.txt 를 재생성한다.
-# python -m piptools compile --generate-hashes --allow-unsafe --strip-extras --no-header --no-emit-index-url -o requirements-release.txt requirements-release.in
+# python -m piptools compile --generate-hashes --allow-unsafe --strip-extras --no-header --no-emit-index-url --pip-args "--only-binary=:all:" -o requirements-release.txt requirements-release.in
 -r requirements.in
 colorama==0.4.6
 pefile==2024.8.26
