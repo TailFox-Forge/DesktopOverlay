@@ -53,6 +53,7 @@ MAX_SOURCE_PIXELS = 40_000_000
 MAX_FRAME_PIXELS = 4_000_000
 MAX_GIF_FRAMES = 180
 MAX_GIF_TOTAL_PIXELS = 100_000_000
+MAX_OUTSIDE_SWEEP_ITERATIONS = 10_000
 PROCESSING_TOOLTIP = "%s - 이미지 처리 중..." % APP_NAME
 Image.MAX_IMAGE_PIXELS = MAX_SOURCE_PIXELS
 
@@ -908,18 +909,22 @@ def edge_strength(rgb):
     return e
 
 
-def outside_region(passable):
+def outside_region(passable, cancel_check=None, max_iterations=None):
     """이미지 가장자리에서 passable 을 따라 이어진 영역만 True.
     캐릭터 외곽선은 passable 이 아니므로 채우기가 안쪽으로 못 들어간다.
     행/열 단위 전파로 연결 영역을 찾는다. 픽셀별 파이썬 루프보다 큰 GIF에서 훨씬 빠르다."""
     h, w = passable.shape
+    if max_iterations is None:
+        max_iterations = min(MAX_OUTSIDE_SWEEP_ITERATIONS, max(32, h + w))
     filled = np.zeros((h, w), dtype=bool)
     filled[0, :] = passable[0, :]
     filled[-1, :] |= passable[-1, :]
     filled[:, 0] |= passable[:, 0]
     filled[:, -1] |= passable[:, -1]
 
-    while True:
+    for _iteration in range(max_iterations):
+        if cancel_check:
+            cancel_check()
         old = filled.copy()
         for _ in range(2):
             for x in range(1, w):
@@ -931,12 +936,12 @@ def outside_region(passable):
             for y in range(h - 2, -1, -1):
                 filled[y, :] |= filled[y + 1, :] & passable[y, :]
         if np.array_equal(old, filled):
-            break
-    return filled
+            return filled
+    raise RuntimeError("배경 영역 탐색이 너무 오래 걸려 중단했습니다.")
 
 
 def key_out(rgba, bg, tolerance, softness, despill, edge_only=True, edge_thresh=14,
-            holes=True):
+            holes=True, cancel_check=None):
     """캐릭터 외곽선 바깥쪽을 투명하게. 반환: RGBA uint8"""
     if already_transparent(rgba):
         return rgba          # 이미 배경이 투명하다 - 그대로 둔다
@@ -953,7 +958,7 @@ def key_out(rgba, bg, tolerance, softness, despill, edge_only=True, edge_thresh=
     if edge_only:
         # 배경색과 비슷하면서 & 외곽선이 아닌 픽셀만 채우기가 지나갈 수 있다
         passable = (dist < hi) & (edge_strength(rgb) < float(edge_thresh))
-        outside = outside_region(passable)
+        outside = outside_region(passable, cancel_check)
 
         alpha = np.where(outside, 0.0, 1.0)
         # 바깥과 맞닿은 픽셀만 원래의 부드러운 알파를 써서 계단현상을 줄인다
@@ -1019,7 +1024,8 @@ def render_frame_arrays(frames, cfg, bg_color=None, cancel_check=None):
             cancel_check()
         rendered.append((
             key_out(frame, bg, cfg["tolerance"], cfg["softness"],
-                    cfg["despill"], cfg["edge_only"], cfg["edge_thresh"], cfg["holes"]),
+                    cfg["despill"], cfg["edge_only"], cfg["edge_thresh"], cfg["holes"],
+                    cancel_check),
             delay,
         ))
     return rendered

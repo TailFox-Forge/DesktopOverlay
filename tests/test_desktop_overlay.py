@@ -257,6 +257,24 @@ def test_outside_region_keeps_enclosed_area_outside_false(overlay_module):
     assert not outside[3, 3]
 
 
+def test_outside_region_can_be_cancelled(overlay_module):
+    mod = overlay_module
+    passable = np.ones((7, 7), dtype=bool)
+
+    with pytest.raises(mod.WorkerCancelled):
+        mod.outside_region(
+            passable,
+            cancel_check=lambda: (_ for _ in ()).throw(mod.WorkerCancelled()))
+
+
+def test_outside_region_has_iteration_limit(overlay_module):
+    mod = overlay_module
+    passable = np.ones((7, 7), dtype=bool)
+
+    with pytest.raises(RuntimeError, match="너무 오래"):
+        mod.outside_region(passable, max_iterations=0)
+
+
 def test_transparent_border_is_preserved(overlay_module):
     mod = overlay_module
     rgba = np.zeros((5, 5, 4), dtype=np.uint8)
