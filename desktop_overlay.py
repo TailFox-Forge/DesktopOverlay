@@ -49,10 +49,12 @@ IMAGE_FILTER = "이미지 (*.gif *.png *.jpg *.jpeg *.webp *.bmp);;모든 파일
 STARTUP_SHORTCUT_NAME = "%s.lnk" % APP_NAME
 MIN_SIZE = 48      # 이보다 작아지면 우클릭 메뉴조차 열기 어려워진다
 MAX_SIZE = 4000
+MAX_SOURCE_PIXELS = 40_000_000
 MAX_FRAME_PIXELS = 4_000_000
 MAX_GIF_FRAMES = 180
 MAX_GIF_TOTAL_PIXELS = 100_000_000
 PROCESSING_TOOLTIP = "%s - 이미지 처리 중..." % APP_NAME
+Image.MAX_IMAGE_PIXELS = MAX_SOURCE_PIXELS
 
 DEFAULTS = {
     "path": "",
@@ -769,6 +771,15 @@ def fit_size_within_pixels(width, height, max_pixels=None):
     return max(1, int(round(width * scale))), max(1, int(round(height * scale)))
 
 
+def validate_source_pixels(width, height):
+    pixels = max(1, int(width) * int(height))
+    if pixels > MAX_SOURCE_PIXELS:
+        raise ValueError(
+            "이미지가 너무 큽니다. %dpx는 허용 한도 %dpx를 초과합니다."
+            % (pixels, MAX_SOURCE_PIXELS))
+    return pixels
+
+
 def frame_limit_for_image(width, height):
     pixels = max(1, int(width) * int(height))
     pixel_limited = max(1, MAX_GIF_TOTAL_PIXELS // pixels)
@@ -806,6 +817,7 @@ def read_frames(path, metadata=None, cancel_check=None):
     """어떤 이미지든 (RGBA numpy 배열, 지속시간ms) 목록으로 읽는다."""
     frames = []
     with Image.open(path) as im:
+        source_pixels = validate_source_pixels(im.size[0], im.size[1])
         if getattr(im, "is_animated", False):
             last = None
             total = int(getattr(im, "n_frames", 0) or 0)
@@ -840,7 +852,7 @@ def read_frames(path, metadata=None, cancel_check=None):
                 metadata["stored_frame_count"] = len(frames)
                 metadata["frame_limit"] = frame_limit
                 metadata["dropped_frames"] = max(0, source_count - len(frames))
-                metadata["source_pixels"] = int(im.size[0]) * int(im.size[1])
+                metadata["source_pixels"] = source_pixels
                 metadata["stored_pixels"] = int(stored_w) * int(stored_h)
                 metadata["total_pixel_limit"] = MAX_GIF_TOTAL_PIXELS
         else:

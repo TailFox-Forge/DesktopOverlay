@@ -430,6 +430,16 @@ def test_read_frames_limits_gif_after_downscale(overlay_module, tmp_path, monkey
     assert all(frame.shape == (5, 5, 4) for frame, _delay in loaded)
 
 
+def test_read_frames_rejects_source_pixels_before_decode(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "MAX_SOURCE_PIXELS", 100)
+    path = tmp_path / "too-large.png"
+    mod.Image.new("RGBA", (20, 20), (255, 0, 0, 255)).save(path)
+
+    with pytest.raises(ValueError, match="허용 한도"):
+        mod.read_frames(str(path))
+
+
 def test_read_frames_closes_image_file(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     path = tmp_path / "sample.png"
