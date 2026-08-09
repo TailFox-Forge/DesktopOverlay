@@ -6,7 +6,7 @@
 
 어떤 이미지든 바탕화면 원하는 위치와 크기에 **배경 없이** 띄워두는 윈도우용 오버레이입니다.
 
-### ⬇ [DesktopOverlay-windows-x64.zip 내려받기](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest/download/DesktopOverlay-windows-x64.zip)
+### ⬇ [DisplayOverlay.zip 내려받기](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest/download/DisplayOverlay.zip)
 
 내려받아 압축을 푼 뒤 `Desktop_Overlay_Start.exe` 를 더블클릭하면 끝입니다.
 
@@ -66,7 +66,7 @@ GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표�
 
 ### 파이썬 없이 (권장)
 
-[릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 `DesktopOverlay-windows-x64.zip` 을 내려받아 압축을 푼 뒤 `Desktop_Overlay_Start.exe` 를 더블클릭하면 됩니다.
+[릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 `DisplayOverlay.zip` 을 내려받아 압축을 푼 뒤 `Desktop_Overlay_Start.exe` 를 더블클릭하면 됩니다.
 
 설정은 기본적으로 exe 가 놓인 폴더에 `config.json` 으로 저장됩니다.
 
@@ -297,6 +297,12 @@ pytest
 테두리 없는 창 모드를 사용하세요.
 
 ## 버전별 변경 내역
+
+### [v0.3.7](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.7)
+
+- 배포 압축 파일명을 `DisplayOverlay.zip`으로 변경했습니다.
+- Windows x64 전용 배포라 파일명에서 플랫폼 접미사를 제거했습니다.
+- 내부 실행 파일명 `Desktop_Overlay_Start.exe`는 그대로 유지합니다.
 
 ### [v0.3.6](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.6)
 

@@ -1,5 +1,11 @@
 # DesktopOverlay 변경 내역
 
+## [v0.3.7](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.7)
+
+- 배포 압축 파일명을 `DisplayOverlay.zip`으로 변경했습니다.
+- Windows x64 전용 배포라 파일명에서 플랫폼 접미사를 제거했습니다.
+- 내부 실행 파일명 `Desktop_Overlay_Start.exe`는 그대로 유지합니다.
+
 ## [v0.3.6](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.6)
 
 - 이미지가 없는 최초 실행 때 사용자가 프로그램 실행 여부를 알 수 있도록 주 모니터 중앙에 안내창을 띄웁니다.
