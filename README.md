@@ -308,16 +308,19 @@ pytest
 ### [v0.3.10](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.10)
 
 - Release workflow 게시 job이 checkout 없이도 저장소를 정확히 지정하도록 `gh release` 명령에 repository를 명시했습니다.
-- `v0.3.8`~`v0.3.9`의 이슈 #54~#60 수정 내용과 릴리스 workflow 보강을 포함합니다.
+- 릴리스 게시에 실패했던 `v0.3.8`, `v0.3.9` 태그의 이슈 #54~#60 수정 내용과 workflow 보강을 실제 배포본으로 통합했습니다.
 
-### [v0.3.9](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.9)
+### v0.3.9 - 릴리스 게시 실패 태그
 
+- Git 태그는 남아 있지만 GitHub Release와 배포 파일은 생성되지 않았습니다.
 - `v0.3.8` 릴리스 워크플로의 게시 단계가 다운로드된 artifact 내부 경로를 고정 가정하지 않도록 보강했습니다.
 - 게시 job이 실제 `DisplayOverlay.zip`과 `release_notes.md` 위치를 찾아 릴리스를 생성/갱신하도록 수정했습니다.
 - `v0.3.8`의 이슈 #54~#60 수정 내용은 그대로 포함합니다.
+- 실제 배포는 `v0.3.10`에 통합됐습니다.
 
-### [v0.3.8](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.8)
+### v0.3.8 - 릴리스 게시 실패 태그
 
+- Git 태그는 남아 있지만 GitHub Release와 배포 파일은 생성되지 않았습니다.
 - 소스 실행용 `requirements.txt`도 CI/릴리스에서 검증한 런타임 버전으로 고정했습니다.
 - 초장문 GIF가 저장 프레임 제한을 우회해 원본 프레임을 끝까지 디코딩하지 않도록 원본 프레임 수 상한을 추가했습니다.
 - 파일 없음, 이미지 정책 초과, 디코딩 실패를 구분해 대형/손상 이미지를 파일 없음으로 오진하지 않게 했습니다.
@@ -325,6 +328,7 @@ pytest
 - 자동 실행 바로가기 생성/검증 시 PowerShell을 SystemRoot 절대 경로로 먼저 실행하도록 하드닝했습니다.
 - 사용하지 않는 `requirements-build.txt`를 제거했습니다.
 - Release workflow를 read-only 빌드 job과 `contents: write` 게시 job으로 분리했습니다.
+- 실제 배포는 `v0.3.10`에 통합됐습니다.
 
 ### [v0.3.7](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.7)
 

@@ -16,6 +16,21 @@ if ROOT_DIR not in sys.path:
 import desktop_overlay as appmod
 
 
+def read_repo_text(*parts):
+    with open(os.path.join(ROOT_DIR, *parts), encoding="utf-8") as f:
+        return f.read()
+
+
+def test_failed_release_tags_are_not_linked_as_downloadable_releases():
+    for relative_path in ("README.md", "CHANGELOG.md"):
+        text = read_repo_text(relative_path)
+        assert "releases/tag/v0.3.8" not in text
+        assert "releases/tag/v0.3.9" not in text
+        assert "v0.3.8 - 릴리스 게시 실패 태그" in text
+        assert "v0.3.9 - 릴리스 게시 실패 태그" in text
+        assert "실제 배포는 `v0.3.10`에 통합됐습니다." in text
+
+
 @pytest.fixture(scope="session")
 def qapp():
     app = QtWidgets.QApplication.instance()
