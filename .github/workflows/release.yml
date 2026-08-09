@@ -147,15 +147,27 @@ jobs:
           fi
 
           ASSET_NAME="DisplayOverlay.zip"
+          CURRENT_SHA="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$REPO" --title "$TAG" --notes-file "$NOTES_PATH"
             ASSET_COUNT="$(gh release view "$TAG" --repo "$REPO" --json assets --jq --arg name "$ASSET_NAME" '[.assets[] | select(.name == $name)] | length')"
             if [ "$ASSET_COUNT" != "0" ]; then
+              EXISTING_DIR="$(mktemp -d)"
+              gh release download "$TAG" --repo "$REPO" --pattern "$ASSET_NAME" --dir "$EXISTING_DIR"
+              EXISTING_SHA="$(sha256sum "$EXISTING_DIR/$ASSET_NAME" | awk '{print $1}')"
+              rm -rf "$EXISTING_DIR"
+              if [ "$EXISTING_SHA" = "$CURRENT_SHA" ]; then
+                gh release edit "$TAG" --repo "$REPO" --title "$TAG" --notes-file "$NOTES_PATH"
+                echo "Release $TAG already has identical $ASSET_NAME. Updated notes and skipped upload."
+                exit 0
+              fi
               echo "::error::Release $TAG already has $ASSET_NAME. Refusing to overwrite immutable release asset."
+              echo "::error::Existing SHA256: $EXISTING_SHA"
+              echo "::error::Current  SHA256: $CURRENT_SHA"
               echo "::error::If this is an intentional recovery, delete the existing asset first: gh release delete-asset $TAG $ASSET_NAME --repo $REPO --yes"
               exit 1
             fi
             gh release upload "$TAG" "$ZIP_PATH" --repo "$REPO"
+            gh release edit "$TAG" --repo "$REPO" --title "$TAG" --notes-file "$NOTES_PATH"
           else
             gh release create "$TAG" "$ZIP_PATH" --repo "$REPO" --title "$TAG" --notes-file "$NOTES_PATH"
           fi

@@ -143,11 +143,17 @@ def test_release_workflow_refuses_to_overwrite_existing_asset():
 
     assert "--clobber" not in workflow
     assert "ASSET_COUNT" in workflow
+    assert "CURRENT_SHA=" in workflow
+    assert "EXISTING_SHA=" in workflow
     assert "Refusing to overwrite immutable release asset" in workflow
     assert '--jq --arg name "$ASSET_NAME"' in workflow
+    assert 'gh release download "$TAG" --repo "$REPO" --pattern "$ASSET_NAME"' in workflow
+    assert "Updated notes and skipped upload" in workflow
     assert "gh release delete-asset $TAG $ASSET_NAME --repo $REPO --yes" in workflow
-    assert workflow.index('gh release edit "$TAG"') < workflow.index("ASSET_COUNT=")
+    first_edit = workflow.index('gh release edit "$TAG"')
+    assert workflow.index("ASSET_COUNT=") < first_edit
     assert 'gh release upload "$TAG" "$ZIP_PATH" --repo "$REPO"' in workflow
+    assert workflow.index('gh release upload "$TAG" "$ZIP_PATH" --repo "$REPO"') < workflow.rindex('gh release edit "$TAG"')
 
 
 @pytest.fixture(scope="session")
