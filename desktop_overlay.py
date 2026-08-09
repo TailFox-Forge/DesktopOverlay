@@ -334,6 +334,19 @@ def remove_startup_shortcut(shortcut_path=None):
     return shortcut_path
 
 
+def is_network_path(path):
+    text = str(path or "")
+    return text.startswith("\\\\") or text.startswith("//")
+
+
+def path_exists_without_network_probe(path):
+    if not path:
+        return False
+    if is_network_path(path):
+        return None
+    return os.path.exists(path)
+
+
 def normalize_hotkeys(value):
     hotkeys = dict(HOTKEY_DEFAULTS)
     if isinstance(value, dict):
@@ -1489,14 +1502,15 @@ class Pet(QtWidgets.QWidget):
         self.move(cfg["x"], cfg["y"])
         # 이미지가 없으면 파일 대화상자를 곧바로 띄우지 않는다.
         # 트레이 아이콘이 준비된 뒤 알림으로 안내한다 (main 에서 prompt_if_no_image 호출).
-        if startup_missing_path and cfg["path"] and os.path.exists(cfg["path"]):
+        saved_path_exists = path_exists_without_network_probe(cfg["path"])
+        if startup_missing_path and cfg["path"] and saved_path_exists is True:
             self.load_image(cfg["path"])
         elif startup_missing_path:
             self.need_image = "missing"
             self.missing_image_path = startup_missing_path
         elif not cfg["path"]:
             self.need_image = "first"
-        elif not os.path.exists(cfg["path"]):
+        elif saved_path_exists is False:
             self.need_image = "missing"
             self.missing_image_path = cfg["path"]
         else:
@@ -1669,7 +1683,7 @@ class Pet(QtWidgets.QWidget):
         QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
 
     def pick_file(self):
-        start = self.cfg["path"] if os.path.exists(self.cfg["path"] or "") else os.path.expanduser("~")
+        start = self.cfg["path"] if path_exists_without_network_probe(self.cfg["path"]) is True else os.path.expanduser("~")
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             None, "띄울 이미지 선택", start, IMAGE_FILTER)
         if path:

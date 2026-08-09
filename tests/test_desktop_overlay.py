@@ -227,6 +227,41 @@ def test_remove_startup_shortcut_deletes_link(overlay_module, tmp_path):
     assert not shortcut.exists()
 
 
+def test_network_path_is_not_probed_on_startup(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    network_path = r"\\offline-server\share\overlay.gif"
+    loaded = []
+
+    def fake_exists(path):
+        if str(path).startswith("\\\\"):
+            raise AssertionError("network path was probed on UI thread")
+        return False
+
+    monkeypatch.setattr(mod.os.path, "exists", fake_exists)
+    monkeypatch.setattr(mod.Pet, "load_image", lambda self, path: loaded.append(path))
+    cfg = dict(mod.DEFAULTS)
+    cfg["path"] = network_path
+
+    pet = mod.Pet(cfg)
+
+    try:
+        assert loaded == [network_path]
+        assert pet.need_image is None
+    finally:
+        pet.close()
+
+
+def test_path_exists_without_network_probe_returns_unknown_for_unc(overlay_module, monkeypatch):
+    mod = overlay_module
+
+    monkeypatch.setattr(
+        mod.os.path,
+        "exists",
+        lambda path: (_ for _ in ()).throw(AssertionError("network path was probed")))
+
+    assert mod.path_exists_without_network_probe(r"\\offline-server\share\x.png") is None
+
+
 def test_startup_state_does_not_read_shortcut_synchronously(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     startup = tmp_path / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
