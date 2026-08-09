@@ -262,20 +262,34 @@ def test_path_exists_without_network_probe_returns_unknown_for_unc(overlay_modul
     assert mod.path_exists_without_network_probe(r"\\offline-server\share\x.png") is None
 
 
-def test_startup_state_does_not_read_shortcut_synchronously(overlay_module, tmp_path, monkeypatch):
+def test_startup_state_only_checks_shortcut_existence(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     startup = tmp_path / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
     startup.mkdir(parents=True)
     (startup / "DesktopOverlay.lnk").write_text("old", encoding="utf-8")
     monkeypatch.setattr(mod.os, "name", "nt")
     monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
-    monkeypatch.setattr(mod, "startup_shortcut_matches_current", lambda path: (_ for _ in ()).throw(AssertionError))
 
     state = mod.startup_state()
 
     assert state["supported"]
     assert state["exists"]
     assert state["matches"]
+
+
+def test_startup_worker_reports_create_result(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "create_startup_shortcut", lambda: r"C:\Startup\DesktopOverlay.lnk")
+    worker = mod.StartupWorker(3, True)
+    results = []
+    failures = []
+    worker.finished.connect(lambda job_id, enabled, path: results.append((job_id, enabled, path)))
+    worker.failed.connect(lambda job_id, enabled, message: failures.append((job_id, enabled, message)))
+
+    worker.run()
+
+    assert results == [(3, True, r"C:\Startup\DesktopOverlay.lnk")]
+    assert failures == []
 
 
 def test_outside_region_keeps_enclosed_area_outside_false(overlay_module):

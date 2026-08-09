@@ -255,32 +255,6 @@ def run_powershell(script):
     raise RuntimeError("PowerShell을 찾을 수 없습니다. %s" % last_error)
 
 
-def read_startup_shortcut(shortcut_path=None):
-    shortcut_path = shortcut_path or startup_shortcut_path()
-    if os.name != "nt" or not shortcut_path or not os.path.exists(shortcut_path):
-        return None
-    script = "\n".join([
-        "$shortcutPath = %s" % ps_quote(shortcut_path),
-        "$shell = New-Object -ComObject WScript.Shell",
-        "$shortcut = $shell.CreateShortcut($shortcutPath)",
-        "$data = @{ TargetPath = $shortcut.TargetPath; Arguments = $shortcut.Arguments }",
-        "$data | ConvertTo-Json -Compress",
-    ])
-    output = run_powershell(script)
-    return json.loads(output) if output else None
-
-
-def startup_shortcut_matches_current(shortcut_path=None):
-    info = read_startup_shortcut(shortcut_path)
-    if not info:
-        return False
-    target, arguments, _working_dir = current_startup_target()
-    actual_target = os.path.normcase(os.path.abspath(info.get("TargetPath") or ""))
-    expected_target = os.path.normcase(os.path.abspath(target))
-    actual_arguments = (info.get("Arguments") or "").strip()
-    return actual_target == expected_target and actual_arguments == arguments.strip()
-
-
 def startup_state():
     path = startup_shortcut_path()
     if os.name != "nt":
@@ -1115,6 +1089,24 @@ class UpdateCheckWorker(QtCore.QObject):
             self.failed.emit(self.job_id, str(e), self.silent)
 
 
+class StartupWorker(QtCore.QObject):
+    finished = QtCore.pyqtSignal(int, bool, str)
+    failed = QtCore.pyqtSignal(int, bool, str)
+
+    def __init__(self, job_id, enabled):
+        super().__init__()
+        self.job_id = job_id
+        self.enabled = bool(enabled)
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        try:
+            path = create_startup_shortcut() if self.enabled else remove_startup_shortcut()
+            self.finished.emit(self.job_id, self.enabled, path or "")
+        except Exception as e:
+            self.failed.emit(self.job_id, self.enabled, str(e))
+
+
 # ---------------------------------------------------------------- 오버레이 창
 
 class SizeDialog(QtWidgets.QDialog):
@@ -1471,6 +1463,9 @@ class Pet(QtWidgets.QWidget):
         self._workers = []
         self._update_job_id = 0
         self._update_workers = []
+        self._startup_job_id = 0
+        self._startup_workers = []
+        self.startup_changing = False
         self.update_checking = False
         self.update_available = False
         self.latest_release = None
@@ -2013,6 +2008,10 @@ class Pet(QtWidgets.QWidget):
             err.setEnabled(False)
 
     def add_startup_menu(self, parent):
+        if self.startup_changing:
+            action = parent.addAction("윈도우 시작 시 자동 실행 적용 중…")
+            action.setEnabled(False)
+            return
         state = startup_state()
         if not state["supported"]:
             action = parent.addAction("윈도우 시작 시 자동 실행")
@@ -2028,26 +2027,69 @@ class Pet(QtWidgets.QWidget):
             parent.addAction("자동 실행 경로 갱신", lambda: self.set_startup_enabled(True))
 
     def set_startup_enabled(self, enabled):
-        try:
-            if enabled:
-                path = create_startup_shortcut()
-                title = "자동 실행 설정"
-                body = "윈도우 시작프로그램 폴더에 바로가기를 만들었습니다.\n%s" % path
-            else:
-                path = remove_startup_shortcut()
-                title = "자동 실행 해제"
-                body = "윈도우 시작프로그램 폴더의 바로가기를 삭제했습니다.\n%s" % path
-            if self.tray:
-                self.tray.showMessage(title, body, QtWidgets.QSystemTrayIcon.Information, 8000)
-        except Exception as exc:
+        if self.startup_changing:
             if self.tray:
                 self.tray.showMessage(
-                    "자동 실행 설정 실패",
-                    str(exc),
-                    QtWidgets.QSystemTrayIcon.Warning,
-                    10000)
-            else:
-                QtWidgets.QMessageBox.warning(None, "자동 실행 설정 실패", str(exc))
+                    "자동 실행 설정",
+                    "이미 자동 실행 설정을 적용하는 중입니다.",
+                    QtWidgets.QSystemTrayIcon.Information,
+                    5000)
+            return
+        self._startup_job_id += 1
+        job_id = self._startup_job_id
+        self.startup_changing = True
+
+        thread = QtCore.QThread(self)
+        worker = StartupWorker(job_id, enabled)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.on_startup_finished)
+        worker.failed.connect(self.on_startup_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(lambda w=worker, t=thread: self.cleanup_startup_worker(w, t))
+        self._startup_workers.append((worker, thread))
+        thread.start()
+
+    def cleanup_startup_worker(self, worker, thread):
+        self._startup_workers = [
+            (w, t) for w, t in self._startup_workers
+            if w is not worker and t is not thread
+        ]
+        worker.deleteLater()
+        thread.deleteLater()
+
+    def on_startup_finished(self, job_id, enabled, path):
+        if job_id != self._startup_job_id:
+            return
+        self.startup_changing = False
+        if not self.tray:
+            return
+        if enabled:
+            self.tray.showMessage(
+                "자동 실행 설정",
+                "윈도우 시작프로그램 폴더에 바로가기를 만들었습니다.\n%s" % path,
+                QtWidgets.QSystemTrayIcon.Information,
+                8000)
+        else:
+            self.tray.showMessage(
+                "자동 실행 해제",
+                "윈도우 시작프로그램 폴더의 바로가기를 삭제했습니다.\n%s" % path,
+                QtWidgets.QSystemTrayIcon.Information,
+                8000)
+
+    def on_startup_failed(self, job_id, _enabled, message):
+        if job_id != self._startup_job_id:
+            return
+        self.startup_changing = False
+        if self.tray:
+            self.tray.showMessage(
+                "자동 실행 설정 실패",
+                message,
+                QtWidgets.QSystemTrayIcon.Warning,
+                10000)
+        else:
+            QtWidgets.QMessageBox.warning(None, "자동 실행 설정 실패", message)
 
     def center_on_screen(self):
         self.snap_to(QtWidgets.QApplication.primaryScreen(), 1, 1)
@@ -2207,6 +2249,9 @@ class Pet(QtWidgets.QWidget):
         for _worker, thread in list(self._update_workers):
             thread.quit()
             thread.wait((UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000)
+        for _worker, thread in list(self._startup_workers):
+            thread.quit()
+            thread.wait(2000)
 
     def hotkey_target_screen(self):
         wanted = self.cfg.get("hotkey_screen") or ""
