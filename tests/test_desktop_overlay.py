@@ -126,6 +126,9 @@ def test_release_workflow_refuses_to_overwrite_existing_asset():
     assert "--clobber" not in workflow
     assert "ASSET_COUNT" in workflow
     assert "Refusing to overwrite immutable release asset" in workflow
+    assert '--jq --arg name "$ASSET_NAME"' in workflow
+    assert "gh release delete-asset $TAG $ASSET_NAME --repo $REPO --yes" in workflow
+    assert workflow.index('gh release edit "$TAG"') < workflow.index("ASSET_COUNT=")
     assert 'gh release upload "$TAG" "$ZIP_PATH" --repo "$REPO"' in workflow
 
 
