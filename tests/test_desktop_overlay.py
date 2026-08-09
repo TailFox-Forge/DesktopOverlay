@@ -1097,6 +1097,51 @@ def test_pick_file_keeps_previous_path_until_new_image_succeeds(qapp, overlay_mo
         pet.close()
 
 
+def test_first_run_notice_shows_dialog_once_and_can_open_picker(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    writes = []
+    opened = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: writes.append(dict(cfg)))
+    monkeypatch.setattr(mod.Pet, "show_first_run_notice_dialog", lambda self: True)
+    monkeypatch.setattr(mod.Pet, "pick_file", lambda self: opened.append(True))
+    cfg = dict(mod.DEFAULTS)
+    cfg["path"] = ""
+    cfg["first_run_notice_shown"] = False
+
+    pet = mod.Pet(cfg)
+
+    try:
+        writes.clear()
+        pet.prompt_first_run_notice()
+        pet.prompt_first_run_notice()
+
+        assert opened == [True]
+        assert pet.cfg["first_run_notice_shown"] is True
+        assert writes[-1]["first_run_notice_shown"] is True
+    finally:
+        pet.close()
+
+
+def test_first_run_notice_is_skipped_after_it_was_shown(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    opened = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+    monkeypatch.setattr(mod.Pet, "show_first_run_notice_dialog", lambda self: True)
+    monkeypatch.setattr(mod.Pet, "pick_file", lambda self: opened.append(True))
+    cfg = dict(mod.DEFAULTS)
+    cfg["path"] = ""
+    cfg["first_run_notice_shown"] = True
+
+    pet = mod.Pet(cfg)
+
+    try:
+        pet.prompt_first_run_notice()
+
+        assert opened == []
+    finally:
+        pet.close()
+
+
 def test_reauto_bg_returns_to_auto_mode(qapp, overlay_module, monkeypatch):
     mod = overlay_module
     monkeypatch.setattr(mod, "save_config", lambda cfg: None)

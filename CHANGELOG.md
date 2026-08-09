@@ -1,5 +1,11 @@
 # DesktopOverlay 변경 내역
 
+## [v0.3.6](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.6)
+
+- 이미지가 없는 최초 실행 때 사용자가 프로그램 실행 여부를 알 수 있도록 주 모니터 중앙에 안내창을 띄웁니다.
+- 안내창에서 바로 **이미지 열기** 를 선택할 수 있습니다.
+- 최초 안내창은 한 번만 표시되며, 이후에는 기존 트레이 알림 흐름을 유지합니다.
+
 ## [v0.3.5](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.5)
 
 - 네트워크 공유 경로 이미지를 저장 경로 또는 실행 인자로 사용할 때 UI 스레드에서 `exists` 검사를 하지 않도록 통일했습니다.

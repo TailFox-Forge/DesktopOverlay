@@ -26,7 +26,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.3.5"
+APP_VERSION = "0.3.6"
 REPOSITORY_URL = "https://github.com/TailFox-Forge/DesktopOverlay"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
@@ -87,6 +87,7 @@ DEFAULTS = {
     "hotkeys": {},           # 기본은 전부 미등록. 사용자가 설정창에서 직접 넣는다
     "hotkeys_enabled": True, # 비활성화 단축키를 누르면 False. 트레이 메뉴로만 다시 켠다
     "hotkey_screen": "",     # 위치 단축키가 움직일 대상 모니터
+    "first_run_notice_shown": False,
 }
 
 SIZE_PRESETS = (25, 50, 75, 100, 150, 200, 300)
@@ -631,7 +632,8 @@ def normalize_config(value):
     cfg["chroma_bg"] = normalize_color(cfg.get("chroma_bg"), None, allow_none=True)
     for key in (
             "remove_bg", "despill", "edge_only", "holes", "auto_bg", "capturable",
-            "click_through", "flip", "topmost", "hotkeys_enabled"):
+            "click_through", "flip", "topmost", "hotkeys_enabled",
+            "first_run_notice_shown"):
         cfg[key] = normalize_bool(cfg.get(key), DEFAULTS[key])
     cfg["hotkeys"] = normalize_hotkeys(cfg.get("hotkeys"))
     cfg["hotkey_screen"] = cfg["hotkey_screen"] if isinstance(cfg.get("hotkey_screen"), str) else ""
@@ -1649,6 +1651,40 @@ class Pet(QtWidgets.QWidget):
         self.tray.showMessage(title, body, QtWidgets.QSystemTrayIcon.Information, 10000)
         self.tray.setToolTip("%s - 이미지를 선택하세요" % APP_NAME)
 
+    def should_show_first_run_notice(self):
+        return self.need_image == "first" and not self.cfg.get("first_run_notice_shown")
+
+    def center_widget_on_primary(self, widget):
+        screen = QtWidgets.QApplication.primaryScreen()
+        if not screen:
+            return
+        widget.adjustSize()
+        geo = screen.availableGeometry()
+        widget.move(geo.center() - widget.rect().center())
+
+    def show_first_run_notice_dialog(self):
+        box = QtWidgets.QMessageBox(None)
+        box.setWindowTitle("%s 시작됨" % APP_NAME)
+        box.setIcon(QtWidgets.QMessageBox.Information)
+        box.setText("%s가 트레이에서 실행 중입니다." % APP_NAME)
+        box.setInformativeText(
+            "아직 띄울 이미지가 없습니다.\n"
+            "트레이 아이콘을 클릭해 메뉴를 열거나, 지금 바로 이미지를 선택하세요.")
+        open_button = box.addButton("이미지 열기", QtWidgets.QMessageBox.AcceptRole)
+        box.addButton("나중에", QtWidgets.QMessageBox.RejectRole)
+        box.setDefaultButton(open_button)
+        self.center_widget_on_primary(box)
+        box.exec_()
+        return box.clickedButton() == open_button
+
+    def prompt_first_run_notice(self):
+        if not self.should_show_first_run_notice():
+            return
+        self.cfg["first_run_notice_shown"] = True
+        self.persist(immediate=True)
+        if self.show_first_run_notice_dialog():
+            self.pick_file()
+
     def prompt_config_notices(self):
         if not self.tray:
             return
@@ -2457,6 +2493,7 @@ def main():
     pet.register_hotkeys(show_errors=True)
     pet.prompt_config_notices()
     pet.prompt_if_no_image()
+    QtCore.QTimer.singleShot(0, pet.prompt_first_run_notice)
     pet.schedule_update_check()
     app.aboutToQuit.connect(pet.shutdown)
     app.pet, app.tray = pet, tray  # 가비지 컬렉션 방지
