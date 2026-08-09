@@ -16,6 +16,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+      - name: Verify version metadata
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $tag = $env:TAG
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "태그 형식이 올바르지 않습니다: $tag (예: v1.2.3)"
+          }
+          $expected = $tag.Substring(1)
+
+          $source = Get-Content desktop_overlay.py -Raw -Encoding utf8
+          if ($source -notmatch 'APP_VERSION\s*=\s*"([^"]+)"') {
+            throw "desktop_overlay.py 에서 APP_VERSION 을 찾지 못했습니다."
+          }
+          $appVersion = $Matches[1]
+          if ($appVersion -ne $expected) {
+            throw "APP_VERSION($appVersion) 이 태그($tag) 와 다릅니다. 태그를 찍기 전에 APP_VERSION 을 올리세요."
+          }
+
+          $readme = Get-Content README.md -Raw -Encoding utf8
+          if ($readme -notmatch [regex]::Escape("releases/tag/$tag")) {
+            throw "README 의 버전별 변경 내역에 $tag 항목이 없습니다. 태그를 찍기 전에 추가하세요."
+          }
+
+          Write-Host "APP_VERSION=$appVersion, README 변경 내역 확인 완료"
       - name: Install dependencies
         run: python -m pip install -r requirements.txt -r requirements-build.txt
       - name: Compile
