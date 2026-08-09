@@ -62,6 +62,15 @@ def test_build_script_uses_dedicated_build_venv():
     assert "python -m pip install -r requirements-release.txt" not in script
 
 
+def test_release_workflow_refuses_to_overwrite_existing_asset():
+    workflow = read_repo_text(".github", "workflows", "release.yml")
+
+    assert "--clobber" not in workflow
+    assert "ASSET_COUNT" in workflow
+    assert "Refusing to overwrite immutable release asset" in workflow
+    assert 'gh release upload "$TAG" "$ZIP_PATH" --repo "$REPO"' in workflow
+
+
 @pytest.fixture(scope="session")
 def qapp():
     app = QtWidgets.QApplication.instance()
