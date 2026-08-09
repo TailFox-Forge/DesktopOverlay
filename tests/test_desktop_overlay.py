@@ -69,6 +69,45 @@ def test_config_falls_back_to_local_path_when_portable_write_fails(overlay_modul
     assert "사용자 설정 폴더로 전환" in "\n".join(mod.consume_config_notices())
 
 
+def test_load_config_normalizes_bad_values(overlay_module):
+    mod = overlay_module
+    with open(mod.CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump({
+            "x": "bad",
+            "scale": "huge",
+            "size": [1, 999999],
+            "tolerance": -5,
+            "opacity": 7,
+            "bg_color": ["x", 999, -1],
+            "anchor": {"screen": "s", "hx": 9, "vy": 1},
+            "hotkeys": {"show": " Ctrl+F1 ", "bad": "Ctrl+F2"},
+            "hotkeys_enabled": "yes",
+        }, f)
+
+    cfg = mod.load_config()
+
+    assert cfg["x"] == mod.DEFAULTS["x"]
+    assert cfg["scale"] == mod.DEFAULTS["scale"]
+    assert cfg["size"] == [mod.MIN_SIZE, mod.MAX_SIZE]
+    assert cfg["tolerance"] == 0
+    assert cfg["opacity"] == 1.0
+    assert cfg["bg_color"] == [255, 255, 0]
+    assert cfg["anchor"] is None
+    assert cfg["hotkeys"]["show"] == "Ctrl+F1"
+    assert cfg["hotkeys_enabled"] is True
+    assert "설정값 일부" in "\n".join(mod.consume_config_notices())
+
+
+def test_save_config_replaces_file_atomically(overlay_module):
+    mod = overlay_module
+
+    mod.save_config({"x": 1})
+    mod.save_config({"x": 2})
+
+    assert json.loads(open(mod.CONFIG_PATH, encoding="utf-8").read())["x"] == 2
+    assert not os.path.exists(mod.CONFIG_PATH + ".tmp")
+
+
 def test_startup_shortcut_path_uses_windows_startup_folder(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     monkeypatch.setattr(mod.os, "name", "nt")
@@ -109,6 +148,22 @@ def test_create_startup_shortcut_builds_current_exe_link(overlay_module, tmp_pat
     assert "$shortcut.Save()" in script
 
 
+def test_source_startup_uses_pythonw_when_available(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    python = tmp_path / "python.exe"
+    pythonw = tmp_path / "pythonw.exe"
+    python.write_text("python", encoding="utf-8")
+    pythonw.write_text("pythonw", encoding="utf-8")
+    monkeypatch.setattr(mod.os, "name", "nt")
+    monkeypatch.setattr(mod.sys, "executable", str(python))
+    monkeypatch.setattr(mod.sys, "frozen", False, raising=False)
+
+    target, args, _working_dir = mod.current_startup_target()
+
+    assert target == str(pythonw)
+    assert "desktop_overlay.py" in args
+
+
 def test_remove_startup_shortcut_deletes_link(overlay_module, tmp_path):
     mod = overlay_module
     shortcut = tmp_path / "DesktopOverlay.lnk"
@@ -119,20 +174,20 @@ def test_remove_startup_shortcut_deletes_link(overlay_module, tmp_path):
     assert not shortcut.exists()
 
 
-def test_startup_state_reports_stale_shortcut(overlay_module, tmp_path, monkeypatch):
+def test_startup_state_does_not_read_shortcut_synchronously(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     startup = tmp_path / "Roaming" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
     startup.mkdir(parents=True)
     (startup / "DesktopOverlay.lnk").write_text("old", encoding="utf-8")
     monkeypatch.setattr(mod.os, "name", "nt")
     monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
-    monkeypatch.setattr(mod, "startup_shortcut_matches_current", lambda path: False)
+    monkeypatch.setattr(mod, "startup_shortcut_matches_current", lambda path: (_ for _ in ()).throw(AssertionError))
 
     state = mod.startup_state()
 
     assert state["supported"]
     assert state["exists"]
-    assert not state["matches"]
+    assert state["matches"]
 
 
 def test_outside_region_keeps_enclosed_area_outside_false(overlay_module):
@@ -163,13 +218,49 @@ def test_transparent_border_is_preserved(overlay_module):
 def test_release_version_compare_handles_v_tags(overlay_module):
     mod = overlay_module
 
-    assert mod.parse_version("v0.2.1") == (0, 2, 1)
-    assert mod.parse_version("0.10") == (0, 10, 0)
+    assert mod.parse_version("v0.2.1") == (0, 2, 1, "")
+    assert mod.parse_version("0.10") == (0, 10, 0, "")
+    assert mod.parse_version("v1.0.0-rc1") == (1, 0, 0, "rc1")
     assert mod.is_newer_version("v0.2.2", "0.2.1")
     assert mod.is_newer_version("v0.3.0", "0.2.9")
+    assert mod.compare_versions("v1.0.0-rc1", "v1.0.0") == -1
     assert not mod.is_newer_version("v0.2.1", "0.2.1")
     assert not mod.is_newer_version("v0.2.0", "0.2.1")
     assert not mod.is_newer_version("not-a-version", "0.2.1")
+
+
+def test_fetch_latest_release_rejects_prerelease_tag(overlay_module, monkeypatch):
+    mod = overlay_module
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"tag_name": "v1.0.0-rc1"}).encode("utf-8")
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    with pytest.raises(ValueError, match="프리릴리스"):
+        mod.fetch_latest_release()
+
+
+def test_update_worker_reports_unexpected_errors(overlay_module):
+    mod = overlay_module
+    worker = mod.UpdateCheckWorker(7, False)
+    failures = []
+    worker.failed.connect(lambda job_id, message, silent: failures.append((job_id, message, silent)))
+
+    def fail():
+        raise RuntimeError("boom")
+
+    mod.fetch_latest_release = fail
+    worker.run()
+
+    assert failures == [(7, "boom", False)]
 
 
 def test_read_frames_limits_gif_frames_and_preserves_duration(overlay_module, tmp_path, monkeypatch):
@@ -200,6 +291,32 @@ def test_read_frames_limits_gif_frames_and_preserves_duration(overlay_module, tm
     assert all(frame.shape == (8, 8, 4) for frame, _delay in loaded)
 
 
+def test_read_frames_limits_gif_after_downscale(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "MAX_FRAME_PIXELS", 25)
+    monkeypatch.setattr(mod, "MAX_GIF_FRAMES", 20)
+    monkeypatch.setattr(mod, "MAX_GIF_TOTAL_PIXELS", 100)
+    frames = [mod.Image.new("RGBA", (20, 20), (i * 20, 0, 0, 255)) for i in range(10)]
+    path = tmp_path / "large.gif"
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=[30] * 10, loop=0)
+
+    metadata = {}
+    loaded = mod.read_frames(str(path), metadata)
+
+    assert metadata["stored_pixels"] <= mod.MAX_FRAME_PIXELS
+    assert metadata["frame_limit"] == 4
+    assert len(loaded) == 4
+    assert all(frame.shape == (5, 5, 4) for frame, _delay in loaded)
+
+
+def test_render_frame_arrays_can_be_cancelled(overlay_module):
+    mod = overlay_module
+    frames = [(np.zeros((3, 3, 4), dtype=np.uint8), 100)]
+
+    with pytest.raises(mod.WorkerCancelled):
+        mod.render_frame_arrays(frames, mod.normalize_config({}), cancel_check=lambda: (_ for _ in ()).throw(mod.WorkerCancelled()))
+
+
 def test_assign_hotkey_removes_duplicate_and_visibility_conflicts(overlay_module):
     mod = overlay_module
     hotkeys = mod.normalize_hotkeys({})
@@ -228,7 +345,21 @@ def test_shortcut_rejects_text_key_without_modifier(overlay_module):
     shortcut, error = mod.shortcut_from_key_event(event)
 
     assert shortcut is None
-    assert "문자/숫자 단독키" in error
+    assert "수식어 없는 단독키" in error
+
+
+def test_shortcut_rejects_function_key_without_modifier(overlay_module):
+    mod = overlay_module
+    event = QtGui.QKeyEvent(
+        QtCore.QEvent.KeyPress,
+        QtCore.Qt.Key_F1,
+        QtCore.Qt.NoModifier,
+    )
+
+    shortcut, error = mod.shortcut_from_key_event(event)
+
+    assert shortcut is None
+    assert "수식어 없는 단독키" in error
 
 
 def test_shortcut_allows_numpad_digit_without_modifier(overlay_module):
@@ -381,5 +512,24 @@ def test_anchor_margin_and_click_behavior(qapp, overlay_module):
             QtCore.QEvent.MouseButtonRelease, local, moved,
             QtCore.Qt.LeftButton, QtCore.Qt.NoButton, QtCore.Qt.NoModifier))
         assert pet.cfg["anchor"] is None
+    finally:
+        pet.close()
+
+
+def test_persist_debounces_until_flush(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    writes = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: writes.append(dict(cfg)))
+    cfg = dict(mod.DEFAULTS)
+    pet = mod.Pet(cfg)
+
+    try:
+        writes.clear()
+        pet.persist()
+        pet.persist()
+        assert writes == []
+
+        pet.flush_persist()
+        assert len(writes) == 1
     finally:
         pet.close()

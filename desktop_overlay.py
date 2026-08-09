@@ -25,7 +25,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
@@ -184,7 +184,17 @@ def startup_shortcut_path():
 def current_startup_target():
     if is_frozen_app():
         return os.path.abspath(sys.executable), "", APP_DIR
-    return os.path.abspath(sys.executable), '"%s"' % os.path.abspath(__file__), APP_DIR
+    return source_python_executable(), '"%s"' % os.path.abspath(__file__), APP_DIR
+
+
+def source_python_executable():
+    """소스 실행 자동실행은 가능하면 콘솔 없는 pythonw.exe 를 사용한다."""
+    executable = os.path.abspath(sys.executable)
+    if os.name == "nt" and os.path.basename(executable).lower() == "python.exe":
+        pythonw = os.path.join(os.path.dirname(executable), "pythonw.exe")
+        if os.path.exists(pythonw):
+            return pythonw
+    return executable
 
 
 def ps_quote(value):
@@ -255,13 +265,9 @@ def startup_state():
     exists = os.path.exists(path)
     if not exists:
         return {"supported": True, "path": path, "exists": False, "matches": False, "error": ""}
-    try:
-        matches = startup_shortcut_matches_current(path)
-        error = ""
-    except Exception as exc:
-        matches = False
-        error = str(exc)
-    return {"supported": True, "path": path, "exists": True, "matches": matches, "error": error}
+    # 트레이 메뉴를 열 때마다 PowerShell COM 을 동기 호출하면 UI가 멈출 수 있다.
+    # 메뉴에서는 빠른 존재 여부만 보고, 경로 갱신은 명시적 메뉴 동작으로 처리한다.
+    return {"supported": True, "path": path, "exists": True, "matches": True, "error": ""}
 
 
 def create_startup_shortcut(shortcut_path=None):
@@ -341,8 +347,8 @@ def shortcut_from_key_event(event):
     if modifiers & QtCore.Qt.MetaModifier:
         parts.append("Win")
 
-    if not parts and (len(key_name) == 1 and key_name.isalnum()):
-        return None, "문자/숫자 단독키는 입력을 방해하므로 Ctrl, Alt, Shift, Win 중 하나와 함께 사용하세요."
+    if not parts and not key_name.startswith("Num"):
+        return None, "수식어 없는 단독키는 입력을 방해하므로 Ctrl, Alt, Shift, Win 중 하나와 함께 사용하세요. Num0~Num9만 단독 등록할 수 있습니다."
     parts.append(key_name)
     return "+".join(parts), None
 
@@ -423,6 +429,77 @@ def normalize_anchor(value):
     return {"screen": screen, "hx": hx, "vy": vy}
 
 
+def clamp_int(value, default, low, high):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, value))
+
+
+def clamp_float(value, default, low, high):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, value))
+
+
+def normalize_bool(value, default):
+    return value if isinstance(value, bool) else bool(default)
+
+
+def normalize_color(value, default, allow_none=False):
+    if value is None and allow_none:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return list(default) if default is not None else None
+    return [clamp_int(channel, int(default[i] if default is not None else 0), 0, 255)
+            for i, channel in enumerate(value)]
+
+
+def normalize_size(value):
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    return [
+        clamp_int(value[0], MIN_SIZE, MIN_SIZE, MAX_SIZE),
+        clamp_int(value[1], MIN_SIZE, MIN_SIZE, MAX_SIZE),
+    ]
+
+
+def default_config():
+    return json.loads(json.dumps(DEFAULTS))
+
+
+def normalize_config(value):
+    cfg = default_config()
+    if isinstance(value, dict):
+        cfg.update(value)
+
+    cfg["path"] = cfg["path"] if isinstance(cfg.get("path"), str) else ""
+    cfg["x"] = clamp_int(cfg.get("x"), DEFAULTS["x"], -100000, 100000)
+    cfg["y"] = clamp_int(cfg.get("y"), DEFAULTS["y"], -100000, 100000)
+    cfg["scale"] = clamp_float(cfg.get("scale"), DEFAULTS["scale"], 0.05, 20.0)
+    cfg["size"] = normalize_size(cfg.get("size"))
+    cfg["tolerance"] = clamp_int(cfg.get("tolerance"), DEFAULTS["tolerance"], 0, 200)
+    cfg["softness"] = clamp_int(cfg.get("softness"), DEFAULTS["softness"], 0, 100)
+    cfg["edge_thresh"] = clamp_int(cfg.get("edge_thresh"), DEFAULTS["edge_thresh"], 0, 255)
+    cfg["bg_color"] = normalize_color(cfg.get("bg_color"), DEFAULTS["bg_color"])
+    cfg["opacity"] = clamp_float(cfg.get("opacity"), DEFAULTS["opacity"], 0.1, 1.0)
+    cfg["anchor"] = normalize_anchor(cfg.get("anchor"))
+    cfg["snap_margin"] = clamp_int(cfg.get("snap_margin"), DEFAULTS["snap_margin"], 0, 500)
+    cfg["chroma_bg"] = normalize_color(cfg.get("chroma_bg"), None, allow_none=True)
+    for key in (
+            "remove_bg", "despill", "edge_only", "holes", "auto_bg", "capturable",
+            "click_through", "flip", "topmost", "hotkeys_enabled"):
+        cfg[key] = normalize_bool(cfg.get(key), DEFAULTS[key])
+    cfg["hotkeys"] = normalize_hotkeys(cfg.get("hotkeys"))
+    cfg["hotkey_screen"] = cfg["hotkey_screen"] if isinstance(cfg.get("hotkey_screen"), str) else ""
+    return cfg
+
+
 def add_config_notice(message):
     if message not in CONFIG_NOTICES:
         CONFIG_NOTICES.append(message)
@@ -444,7 +521,7 @@ def initial_config_path():
 
 def load_config():
     global CONFIG_PATH
-    cfg = dict(DEFAULTS)
+    cfg = default_config()
     CONFIG_PATH = initial_config_path()
     try:
         # utf-8-sig: 메모장이나 PowerShell 이 붙인 BOM 이 있어도 읽는다
@@ -457,12 +534,10 @@ def load_config():
     except Exception:
         if os.path.exists(CONFIG_PATH):
             add_config_notice("설정을 읽지 못해 기본값으로 시작했습니다.\n%s" % CONFIG_PATH)
-    cfg["anchor"] = normalize_anchor(cfg.get("anchor"))
-    cfg["hotkeys"] = normalize_hotkeys(cfg.get("hotkeys"))
-    cfg["hotkeys_enabled"] = bool(cfg.get("hotkeys_enabled", True))
-    if not isinstance(cfg.get("hotkey_screen"), str):
-        cfg["hotkey_screen"] = ""
-    return cfg
+    normalized = normalize_config(cfg)
+    if normalized != cfg and os.path.exists(CONFIG_PATH):
+        add_config_notice("설정값 일부가 올바르지 않아 기본값 또는 허용 범위로 보정했습니다.\n%s" % CONFIG_PATH)
+    return normalized
 
 
 def save_config(cfg):
@@ -471,8 +546,10 @@ def save_config(cfg):
         parent = os.path.dirname(path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        tmp_path = "%s.tmp" % path
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
 
     try:
         write(CONFIG_PATH)
@@ -496,11 +573,14 @@ def save_config(cfg):
 # ---------------------------------------------------------------- 업데이트 확인
 
 def parse_version(value):
-    """v0.2.1 같은 릴리스 태그를 비교 가능한 숫자 tuple 로 바꾼다."""
+    """v0.2.1 같은 릴리스 태그를 (major, minor, patch, prerelease) 로 바꾼다."""
     text = str(value or "").strip()
     if text.lower().startswith("v"):
         text = text[1:]
-    text = text.split("-", 1)[0].split("+", 1)[0]
+    text = text.split("+", 1)[0]
+    prerelease = ""
+    if "-" in text:
+        text, prerelease = text.split("-", 1)
     if not text:
         return None
     parts = text.split(".")
@@ -511,13 +591,30 @@ def parse_version(value):
         nums.append(int(part))
     while len(nums) < 3:
         nums.append(0)
-    return tuple(nums[:3])
+    return tuple(nums[:3] + [prerelease])
+
+
+def compare_versions(left_tag, right_tag):
+    left = parse_version(left_tag)
+    right = parse_version(right_tag)
+    if not left or not right:
+        return None
+    left_nums, right_nums = left[:3], right[:3]
+    if left_nums != right_nums:
+        return 1 if left_nums > right_nums else -1
+    left_pre, right_pre = left[3], right[3]
+    if left_pre == right_pre:
+        return 0
+    if left_pre and not right_pre:
+        return -1
+    if right_pre and not left_pre:
+        return 1
+    return 1 if left_pre > right_pre else -1
 
 
 def is_newer_version(latest_tag, current_version=APP_VERSION):
-    latest = parse_version(latest_tag)
-    current = parse_version(current_version)
-    return bool(latest and current and latest > current)
+    compared = compare_versions(latest_tag, current_version)
+    return bool(compared and compared > 0)
 
 
 def fetch_latest_release():
@@ -531,6 +628,11 @@ def fetch_latest_release():
     with urllib.request.urlopen(req, timeout=UPDATE_CHECK_TIMEOUT_SEC) as response:
         data = json.loads(response.read().decode("utf-8"))
     tag = data.get("tag_name") or ""
+    parsed = parse_version(tag)
+    if not parsed:
+        raise ValueError("릴리스 태그 형식을 확인할 수 없습니다: %s" % (tag or "(없음)"))
+    if parsed[3]:
+        raise ValueError("프리릴리스 태그는 자동 업데이트 대상이 아닙니다: %s" % tag)
     return {
         "tag": tag,
         "name": data.get("name") or tag,
@@ -541,7 +643,8 @@ def fetch_latest_release():
 
 # ---------------------------------------------------------------- 이미지 처리
 
-def fit_size_within_pixels(width, height, max_pixels=MAX_FRAME_PIXELS):
+def fit_size_within_pixels(width, height, max_pixels=None):
+    max_pixels = MAX_FRAME_PIXELS if max_pixels is None else max_pixels
     pixels = max(1, int(width) * int(height))
     if pixels <= max_pixels:
         return int(width), int(height)
@@ -582,18 +685,21 @@ def frame_to_array(image, metadata=None):
     return np.array(image)
 
 
-def read_frames(path, metadata=None):
+def read_frames(path, metadata=None, cancel_check=None):
     """어떤 이미지든 (RGBA numpy 배열, 지속시간ms) 목록으로 읽는다."""
     im = Image.open(path)
     frames = []
     if getattr(im, "is_animated", False):
         last = None
         total = int(getattr(im, "n_frames", 0) or 0)
-        frame_limit = frame_limit_for_image(im.size[0], im.size[1])
+        stored_w, stored_h = fit_size_within_pixels(im.size[0], im.size[1])
+        frame_limit = frame_limit_for_image(stored_w, stored_h)
         selected = selected_frame_indices(total, frame_limit) if total else None
         pending_delay = 0
         source_count = 0
         for index, frame in enumerate(ImageSequence.Iterator(im)):
+            if cancel_check:
+                cancel_check()
             source_count += 1
             cur = frame.convert("RGBA")
             if last is not None and frame.tile:
@@ -618,8 +724,11 @@ def read_frames(path, metadata=None):
             metadata["frame_limit"] = frame_limit
             metadata["dropped_frames"] = max(0, source_count - len(frames))
             metadata["source_pixels"] = int(im.size[0]) * int(im.size[1])
+            metadata["stored_pixels"] = int(stored_w) * int(stored_h)
             metadata["total_pixel_limit"] = MAX_GIF_TOTAL_PIXELS
     else:
+        if cancel_check:
+            cancel_check()
         frames.append((frame_to_array(im.convert("RGBA"), metadata), 100))
         if metadata is not None:
             metadata["source_frame_count"] = 1
@@ -763,20 +872,34 @@ def to_qpixmap(rgba):
     return QtGui.QPixmap.fromImage(img)
 
 
-def render_frame_arrays(frames, cfg, bg_color=None):
+class WorkerCancelled(Exception):
+    pass
+
+
+def render_frame_arrays(frames, cfg, bg_color=None, cancel_check=None):
+    rendered = []
     if not cfg.get("remove_bg"):
-        return [(f, d) for f, d in frames]
+        for frame, delay in frames:
+            if cancel_check:
+                cancel_check()
+            rendered.append((frame, delay))
+        return rendered
     bg = np.array(bg_color if bg_color is not None else cfg["bg_color"], dtype=np.float32)
-    return [
-        (key_out(f, bg, cfg["tolerance"], cfg["softness"],
-                 cfg["despill"], cfg["edge_only"], cfg["edge_thresh"], cfg["holes"]), d)
-        for f, d in frames
-    ]
+    for frame, delay in frames:
+        if cancel_check:
+            cancel_check()
+        rendered.append((
+            key_out(frame, bg, cfg["tolerance"], cfg["softness"],
+                    cfg["despill"], cfg["edge_only"], cfg["edge_thresh"], cfg["holes"]),
+            delay,
+        ))
+    return rendered
 
 
 class ImageProcessWorker(QtCore.QObject):
     finished = QtCore.pyqtSignal(int, object)
-    failed = QtCore.pyqtSignal(int, str, str)
+    failed = QtCore.pyqtSignal(int, str, str, str)
+    cancelled = QtCore.pyqtSignal(int)
 
     def __init__(self, job_id, cfg, path=None, frames=None, detect_bg=False):
         super().__init__()
@@ -785,16 +908,35 @@ class ImageProcessWorker(QtCore.QObject):
         self.path = path
         self.frames = frames
         self.detect_bg = detect_bg
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    def check_cancelled(self):
+        if self._cancelled:
+            raise WorkerCancelled()
 
     @QtCore.pyqtSlot()
     def run(self):
         try:
             metadata = {}
-            frames = self.frames if self.frames is not None else read_frames(self.path, metadata)
+            if self.frames is not None:
+                frames = self.frames
+            else:
+                try:
+                    frames = read_frames(self.path, metadata, self.check_cancelled)
+                except WorkerCancelled:
+                    raise
+                except Exception as e:
+                    self.failed.emit(self.job_id, self.path or "", "read", str(e))
+                    return
+            self.check_cancelled()
             bg_color = self.cfg.get("bg_color")
             if self.detect_bg and frames:
                 bg_color = detect_bg_color(frames[0][0]).tolist()
-            rendered = render_frame_arrays(frames, self.cfg, bg_color)
+            rendered = render_frame_arrays(frames, self.cfg, bg_color, self.check_cancelled)
+            self.check_cancelled()
             self.finished.emit(self.job_id, {
                 "path": self.path,
                 "frames": frames,
@@ -802,8 +944,10 @@ class ImageProcessWorker(QtCore.QObject):
                 "bg_color": bg_color,
                 "metadata": metadata,
             })
+        except WorkerCancelled:
+            self.cancelled.emit(self.job_id)
         except Exception as e:
-            self.failed.emit(self.job_id, self.path or "", str(e))
+            self.failed.emit(self.job_id, self.path or "", "process", str(e))
 
 
 class UpdateCheckWorker(QtCore.QObject):
@@ -819,7 +963,7 @@ class UpdateCheckWorker(QtCore.QObject):
     def run(self):
         try:
             self.finished.emit(self.job_id, fetch_latest_release(), self.silent)
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as e:
+        except Exception as e:
             self.failed.emit(self.job_id, str(e), self.silent)
 
 
@@ -1009,6 +1153,7 @@ class HotkeyDialog(QtWidgets.QDialog):
         self.pet = pet
         self.hotkeys = normalize_hotkeys(pet.cfg.get("hotkeys"))
         self.buttons = {}
+        self._hotkeys_released = False
         self.setWindowTitle("단축키 설정")
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowStaysOnTopHint)
         self.setMinimumSize(980, 720)
@@ -1057,12 +1202,12 @@ class HotkeyDialog(QtWidgets.QDialog):
         self.center_on_primary()
 
     def showEvent(self, event):
-        self.pet.unregister_hotkeys()
+        if not self._hotkeys_released:
+            self.pet.unregister_hotkeys()
+            self._hotkeys_released = True
         super().showEvent(event)
 
     def closeEvent(self, event):
-        if self.result() != QtWidgets.QDialog.Accepted:
-            self.pet.register_hotkeys(show_errors=True)
         super().closeEvent(event)
 
     def populate_screens(self):
@@ -1136,12 +1281,14 @@ class HotkeyDialog(QtWidgets.QDialog):
     def accept(self):
         self.pet.cfg["hotkeys"] = normalize_hotkeys(self.hotkeys)
         self.pet.cfg["hotkey_screen"] = self.selected_screen_name()
-        self.pet.persist()
+        self.pet.persist(immediate=True)
         self.pet.register_hotkeys(show_errors=True)
+        self._hotkeys_released = False
         super().accept()
 
     def reject(self):
         self.pet.register_hotkeys(show_errors=True)
+        self._hotkeys_released = False
         super().reject()
 
     def center_on_primary(self):
@@ -1180,6 +1327,7 @@ class Pet(QtWidgets.QWidget):
         self.hidden = False      # 숨김 상태는 저장하지 않는다. 다음 실행 때는 항상 보인다
         self.need_image = None   # None / "first" / "missing"
         self.missing_image_path = None
+        self.startup_missing_path = None
         self.ready = False       # 초기화 중에는 위치 보정을 하지 않는다
         self._sized_once = False # 첫 렌더 크기 확정 전에는 640x480 기본 창 중심을 보존하면 안 된다
 
@@ -1190,11 +1338,13 @@ class Pet(QtWidgets.QWidget):
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.next_frame)
+        self._persist_timer = QtCore.QTimer(self)
+        self._persist_timer.setSingleShot(True)
+        self._persist_timer.timeout.connect(self.flush_persist)
 
         startup_missing_path = cfg.pop("_startup_missing_path", None)
         if startup_missing_path:
-            self.need_image = "missing"
-            self.missing_image_path = startup_missing_path
+            self.startup_missing_path = startup_missing_path
 
         self.move(cfg["x"], cfg["y"])
         # 이미지가 없으면 파일 대화상자를 곧바로 띄우지 않는다.
@@ -1202,7 +1352,8 @@ class Pet(QtWidgets.QWidget):
         if startup_missing_path and cfg["path"] and os.path.exists(cfg["path"]):
             self.load_image(cfg["path"])
         elif startup_missing_path:
-            pass
+            self.need_image = "missing"
+            self.missing_image_path = startup_missing_path
         elif not cfg["path"]:
             self.need_image = "first"
         elif not os.path.exists(cfg["path"]):
@@ -1215,7 +1366,7 @@ class Pet(QtWidgets.QWidget):
         # 저장된 위치를 복원한다. 바로가기로 옮겨 둔 상태면 그 구석으로 다시 붙는다
         if cfg.get("anchor"):
             self.restore_position()
-        self.persist()   # 첫 실행에서도 설정 파일이 생기도록
+        self.persist(immediate=True)   # 첫 실행에서도 설정 파일이 생기도록
 
     # ---- 창 속성
     def apply_window_flags(self):
@@ -1266,7 +1417,16 @@ class Pet(QtWidgets.QWidget):
     def prompt_if_no_image(self):
         """띄울 이미지가 없을 때 트레이 알림으로 안내한다.
         파일 대화상자를 강제로 띄우면 트레이에 있는 프로그램이라는 걸 알기 어렵다."""
-        if not self.need_image or not self.tray:
+        if not self.tray:
+            return
+        if self.startup_missing_path:
+            self.tray.showMessage(
+                "전달받은 이미지 경로를 찾을 수 없습니다",
+                "%s\n저장된 이미지가 있으면 대신 복원했습니다." % self.startup_missing_path,
+                QtWidgets.QSystemTrayIcon.Warning,
+                10000)
+            self.startup_missing_path = None
+        if not self.need_image:
             return
         if self.need_image == "first":
             title = "%s 를 시작했습니다" % APP_NAME
@@ -1392,6 +1552,7 @@ class Pet(QtWidgets.QWidget):
     def start_processing(self, path=None, frames=None, detect_bg=False):
         self._job_id += 1
         job_id = self._job_id
+        self.cancel_processing_workers()
         if self.tray:
             self.tray.setToolTip(PROCESSING_TOOLTIP)
 
@@ -1401,11 +1562,17 @@ class Pet(QtWidgets.QWidget):
         thread.started.connect(worker.run)
         worker.finished.connect(self.on_processing_finished)
         worker.failed.connect(self.on_processing_failed)
+        worker.cancelled.connect(thread.quit)
         worker.finished.connect(thread.quit)
         worker.failed.connect(thread.quit)
         thread.finished.connect(lambda w=worker, t=thread: self.cleanup_worker(w, t))
         self._workers.append((worker, thread))
         thread.start()
+
+    def cancel_processing_workers(self):
+        for worker, _thread in list(self._workers):
+            if hasattr(worker, "cancel"):
+                worker.cancel()
 
     def cleanup_worker(self, worker, thread):
         self._workers = [(w, t) for w, t in self._workers if w is not worker and t is not thread]
@@ -1456,21 +1623,30 @@ class Pet(QtWidgets.QWidget):
                 QtWidgets.QSystemTrayIcon.Information,
                 10000)
 
-    def on_processing_failed(self, job_id, path, message):
+    def on_processing_failed(self, job_id, path, kind, message):
         if job_id != self._job_id:
             return
-        self.need_image = "missing"
-        self.missing_image_path = path
+        read_error = kind == "read"
+        if read_error:
+            self.need_image = "missing"
+            self.missing_image_path = path
         if self.tray:
-            self.tray.setToolTip("%s - 이미지를 선택하세요" % APP_NAME)
+            if read_error:
+                self.tray.setToolTip("%s - 이미지를 선택하세요" % APP_NAME)
             self.tray.showMessage(
-                "이미지를 읽지 못했습니다", "%s\n%s" % (path or "(경로 없음)", message),
+                "이미지를 읽지 못했습니다" if read_error else "이미지 처리에 실패했습니다",
+                "%s\n%s" % (path or "(경로 없음)", message),
                 QtWidgets.QSystemTrayIcon.Warning, 10000)
         else:
-            QtWidgets.QMessageBox.critical(None, "오류", "이미지를 읽지 못했습니다.\n%s" % message)
+            QtWidgets.QMessageBox.critical(
+                None, "오류",
+                ("이미지를 읽지 못했습니다." if read_error else "이미지 처리에 실패했습니다.")
+                + "\n%s" % message)
 
     def apply_rendered_frames(self, rendered):
         self.pixmaps = [(to_qpixmap(f), d) for f, d in rendered]
+        if hasattr(rendered, "clear"):
+            rendered.clear()
         self.index = 0
         self.apply_scale()
         self.show_frame()
@@ -1690,19 +1866,12 @@ class Pet(QtWidgets.QWidget):
             action.setChecked(False)
             action.setEnabled(False)
             return
-        if state["exists"] and not state["matches"]:
-            label = "자동 실행 경로 갱신"
-            checked = False
-        else:
-            label = "윈도우 시작 시 자동 실행"
-            checked = bool(state["exists"])
-        action = parent.addAction(label)
+        action = parent.addAction("윈도우 시작 시 자동 실행")
         action.setCheckable(True)
-        action.setChecked(checked)
-        action.triggered.connect(lambda checked, s=state: self.set_startup_enabled(checked or bool(s["error"])))
-        if state["error"]:
-            note = parent.addAction("자동 실행 바로가기 확인 필요")
-            note.setEnabled(False)
+        action.setChecked(bool(state["exists"]))
+        action.triggered.connect(lambda checked: self.set_startup_enabled(bool(checked)))
+        if state["exists"]:
+            parent.addAction("자동 실행 경로 갱신", lambda: self.set_startup_enabled(True))
 
     def set_startup_enabled(self, enabled):
         try:
@@ -1862,10 +2031,28 @@ class Pet(QtWidgets.QWidget):
             self.rebuild()
             self.persist()
 
-    def persist(self):
+    def persist(self, immediate=False):
+        self.cfg["x"], self.cfg["y"] = self.x(), self.y()
+        if immediate:
+            self.flush_persist()
+            return
+        self._persist_timer.start(500)
+
+    def flush_persist(self):
         self.cfg["x"], self.cfg["y"] = self.x(), self.y()
         save_config(self.cfg)
         self.prompt_config_notices()
+
+    def shutdown(self):
+        self.unregister_hotkeys()
+        self.flush_persist()
+        self.cancel_processing_workers()
+        for _worker, thread in list(self._workers):
+            thread.quit()
+            thread.wait(2000)
+        for _worker, thread in list(self._update_workers):
+            thread.quit()
+            thread.wait((UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000)
 
     def hotkey_target_screen(self):
         wanted = self.cfg.get("hotkey_screen") or ""
@@ -2008,7 +2195,7 @@ def main():
     pet.prompt_config_notices()
     pet.prompt_if_no_image()
     pet.schedule_update_check()
-    app.aboutToQuit.connect(pet.unregister_hotkeys)
+    app.aboutToQuit.connect(pet.shutdown)
     app.pet, app.tray = pet, tray  # 가비지 컬렉션 방지
     sys.exit(app.exec_())
 
