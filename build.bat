@@ -17,6 +17,8 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
 )
 
 set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
+call :ENSURE_VENV
+if errorlevel 1 goto FAIL
 
 "%VENV_PY%" -m pip install --require-hashes -r "%~dp0requirements-release.txt"
 if errorlevel 1 goto FAIL
@@ -47,6 +49,17 @@ if defined PYTHON_EXE exit /b 0
 for /f "usebackq delims=" %%P in (`python -c "import sys; print(sys.executable) if sys.version_info >= (3, 10) else sys.exit(1)" 2^>nul`) do set "PYTHON_EXE=%%P"
 if defined PYTHON_EXE exit /b 0
 exit /b 1
+
+:ENSURE_VENV
+"%VENV_PY%" -c "import sys" >nul 2>&1
+if not errorlevel 1 exit /b 0
+echo.
+echo   기존 빌드용 가상환경이 손상되어 다시 만듭니다.
+echo.
+rmdir /s /q "%VENV_DIR%" >nul 2>&1
+"%PYTHON_EXE%" -m venv "%VENV_DIR%"
+if errorlevel 1 exit /b 1
+exit /b 0
 
 :NOPYTHON
 echo.
