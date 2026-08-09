@@ -515,6 +515,33 @@ def test_hotkey_capture_delete_only_clears_without_modifiers(qapp, overlay_modul
         button.deleteLater()
 
 
+@pytest.mark.parametrize(("key", "modifiers", "expected"), [
+    (QtCore.Qt.Key_Tab, QtCore.Qt.ControlModifier, "Ctrl+Tab"),
+    (QtCore.Qt.Key_Tab, QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier, "Ctrl+Shift+Tab"),
+    (QtCore.Qt.Key_Tab, QtCore.Qt.AltModifier, ""),
+    (QtCore.Qt.Key_Escape, QtCore.Qt.ControlModifier, ""),
+    (QtCore.Qt.Key_Escape, QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier, ""),
+])
+def test_hotkey_capture_uses_same_reserved_combo_rules(qapp, overlay_module, key, modifiers, expected):
+    mod = overlay_module
+    button = mod.HotkeyCaptureButton("show")
+    captured = []
+    button.captured.connect(lambda command, shortcut, error: captured.append((command, shortcut, error)))
+
+    try:
+        button.start_capture()
+        button.keyPressEvent(QtGui.QKeyEvent(QtCore.QEvent.KeyPress, key, modifiers))
+
+        assert captured
+        assert captured[0][1] == expected
+        if expected:
+            assert captured[0][2] == ""
+        else:
+            assert "예약 단축키" in captured[0][2] or "사용할 수 없습니다" in captured[0][2]
+    finally:
+        button.deleteLater()
+
+
 def test_hotkey_capture_waits_for_modifier_combo(qapp, overlay_module):
     mod = overlay_module
     button = mod.HotkeyCaptureButton("show")

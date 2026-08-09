@@ -25,7 +25,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.3.3"
+APP_VERSION = "0.3.4"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
@@ -416,7 +416,7 @@ def shortcut_from_key_event(event):
 
     keypad = bool(modifiers & QtCore.Qt.KeypadModifier)
     key_name = key_name_from_qt(key, keypad=keypad)
-    if not key_name or key_name in ("Esc", "Tab"):
+    if not key_name:
         return None, "이 키는 단축키로 사용할 수 없습니다."
 
     parts = []
@@ -432,7 +432,11 @@ def shortcut_from_key_event(event):
     if not parts and not key_name.startswith("Num"):
         return None, "수식어 없는 단독키는 입력을 방해하므로 Ctrl, Alt, Shift, Win 중 하나와 함께 사용하세요. Num0~Num9만 단독 등록할 수 있습니다."
     parts.append(key_name)
-    return "+".join(parts), None
+    shortcut = "+".join(parts)
+    normalized = normalize_shortcut_string(shortcut)
+    if not normalized:
+        return None, "이 키 조합은 Windows 예약 단축키이거나 사용할 수 없습니다."
+    return normalized, None
 
 
 def hotkey_to_windows(shortcut):
@@ -1212,7 +1216,12 @@ class HotkeyCaptureButton(QtWidgets.QPushButton):
         if not self.capturing:
             super().keyPressEvent(event)
             return
-        if event.key() == QtCore.Qt.Key_Escape:
+        active_modifiers = event.modifiers() & (
+            QtCore.Qt.ControlModifier
+            | QtCore.Qt.AltModifier
+            | QtCore.Qt.ShiftModifier
+            | QtCore.Qt.MetaModifier)
+        if event.key() == QtCore.Qt.Key_Escape and not active_modifiers:
             self.capturing = False
             self.refresh()
             return
