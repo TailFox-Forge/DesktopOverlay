@@ -1,6 +1,8 @@
 import importlib
 import json
 import os
+import re
+import subprocess
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -19,6 +21,13 @@ import desktop_overlay as appmod
 def read_repo_text(*parts):
     with open(os.path.join(ROOT_DIR, *parts), encoding="utf-8") as f:
         return f.read()
+
+
+PYTHON_PROBE_PATTERN = re.compile(r'-c "([^"]*sys\.version_info >= \(3, 10\)[^"]*)"')
+
+
+def python_probe_snippets(script):
+    return PYTHON_PROBE_PATTERN.findall(script)
 
 
 def test_failed_release_tags_are_not_linked_as_downloadable_releases():
@@ -60,6 +69,35 @@ def test_build_script_uses_dedicated_build_venv():
     assert "\"%VENV_PY%\" -m pip install --require-hashes -r" in script
     assert "\"%VENV_PY%\" -m PyInstaller" in script
     assert "python -m pip install -r requirements-release.txt" not in script
+
+
+def test_batch_python_probes_print_executable_before_exit():
+    for script_name in ("Desktop_Overlay_Start.bat", "build.bat"):
+        snippets = python_probe_snippets(read_repo_text(script_name))
+        assert len(snippets) == 2
+        for snippet in snippets:
+            assert snippet.index("print(sys.executable)") < snippet.index("sys.exit(1)")
+            result = subprocess.run(
+                [sys.executable, "-c", snippet],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            assert result.stdout.strip()
+
+
+def test_batch_scripts_rebuild_broken_venv_and_avoid_raw_path_echo():
+    scripts = {
+        "Desktop_Overlay_Start.bat": "소스 실행용 가상환경",
+        "build.bat": "빌드용 가상환경",
+    }
+    for script_name, label in scripts.items():
+        script = read_repo_text(script_name)
+
+        assert ":ENSURE_VENV" in script
+        assert '"%VENV_PY%" -c "import sys"' in script
+        assert 'rmdir /s /q "%VENV_DIR%"' in script
+        assert "%s을 만듭니다: %%VENV_DIR%%" % label not in script
 
 
 def test_dependency_lock_files_use_hash_verification():
