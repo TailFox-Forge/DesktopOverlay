@@ -12,15 +12,15 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.3.3** 입니다.
+현재 최신 릴리스는 **v0.3.4** 입니다.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.3/Desktop_Overlay_Start.exe)
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.4/Desktop_Overlay_Start.exe)
 
 ```text
-SHA256: bdcc332b8f3694d49819886cab0ae799fd05094b91417d4cdd4bee5809b172b7
+SHA256: 5a95673455009a06e55ae354514cbc3d4f6a5678f7e38552a7fc4078344e1b7c
 ```
 
-v0.3.3에서는 수식어가 붙은 정상 단축키 조합을 다시 허용하고 Windows 예약 조합만 명확히 거부하도록 보강했습니다.
+v0.3.4에서는 단축키 설정창의 캡처 UI도 같은 예약 조합 판정을 사용하도록 보강했습니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
@@ -295,6 +295,14 @@ pytest
 테두리 없는 창 모드를 사용하세요.
 
 ## 버전별 변경 내역
+
+### [v0.3.4](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.4)
+
+- 단축키 설정창의 캡처 UI도 `config.json` 정규화와 같은 예약 조합 판정을 사용합니다.
+- `Ctrl+Tab`, `Ctrl+Shift+Tab`을 설정창에서도 등록할 수 있게 했습니다.
+- `Alt+Tab`, `Ctrl+Esc`, `Ctrl+Shift+Esc`는 설정창에서도 계속 거부합니다.
+- 수식어 없는 `Esc`의 캡처 취소 동작은 유지했습니다.
+- 캡처 UI 전용 회귀 테스트를 추가했습니다.
 
 ### [v0.3.3](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.3)
 
