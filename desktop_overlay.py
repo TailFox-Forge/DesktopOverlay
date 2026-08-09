@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import numpy as np
@@ -29,6 +30,7 @@ APP_VERSION = "0.3.4"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
+UPDATE_RESPONSE_MAX_BYTES = 1_000_000
 RESAMPLE_LANCZOS = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
 
 # PyInstaller onefile 로 묶으면 __file__ 은 임시 압축 해제 폴더를 가리킨다.
@@ -717,6 +719,18 @@ def is_newer_version(latest_tag, current_version=APP_VERSION):
     return bool(compared and compared > 0)
 
 
+def safe_release_url(url):
+    parsed = urllib.parse.urlparse(str(url or ""))
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    if (
+            parsed.scheme == "https"
+            and host in ("github.com", "www.github.com")
+            and path.startswith("/tailfox-forge/desktopoverlay/releases/")):
+        return str(url)
+    return RELEASES_LATEST_URL
+
+
 def fetch_latest_release():
     req = urllib.request.Request(
         RELEASES_LATEST_API,
@@ -726,7 +740,10 @@ def fetch_latest_release():
         },
     )
     with urllib.request.urlopen(req, timeout=UPDATE_CHECK_TIMEOUT_SEC) as response:
-        data = json.loads(response.read().decode("utf-8"))
+        raw = response.read(UPDATE_RESPONSE_MAX_BYTES + 1)
+    if len(raw) > UPDATE_RESPONSE_MAX_BYTES:
+        raise ValueError("업데이트 응답이 너무 큽니다.")
+    data = json.loads(raw.decode("utf-8"))
     tag = data.get("tag_name") or ""
     parsed = parse_version(tag)
     if not parsed:
@@ -736,7 +753,7 @@ def fetch_latest_release():
     return {
         "tag": tag,
         "name": data.get("name") or tag,
-        "url": data.get("html_url") or RELEASES_LATEST_URL,
+        "url": safe_release_url(data.get("html_url")),
         "newer": is_newer_version(tag),
     }
 

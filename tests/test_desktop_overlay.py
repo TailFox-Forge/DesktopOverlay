@@ -298,7 +298,7 @@ def test_fetch_latest_release_rejects_prerelease_tag(overlay_module, monkeypatch
         def __exit__(self, *_args):
             return False
 
-        def read(self):
+        def read(self, *_args):
             return json.dumps({"tag_name": "v1.0.0-rc1"}).encode("utf-8")
 
     monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
@@ -317,12 +317,55 @@ def test_fetch_latest_release_rejects_unparseable_tag(overlay_module, monkeypatc
         def __exit__(self, *_args):
             return False
 
-        def read(self):
+        def read(self, *_args):
             return json.dumps({"tag_name": "v1.0.0.final"}).encode("utf-8")
 
     monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
 
     with pytest.raises(ValueError, match="태그 형식"):
+        mod.fetch_latest_release()
+
+
+def test_fetch_latest_release_sanitizes_untrusted_release_url(overlay_module, monkeypatch):
+    mod = overlay_module
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, *_args):
+            return json.dumps({
+                "tag_name": "v9.9.9",
+                "html_url": "file:///C:/Windows/System32/calc.exe",
+            }).encode("utf-8")
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    result = mod.fetch_latest_release()
+
+    assert result["url"] == mod.RELEASES_LATEST_URL
+    assert result["newer"]
+
+
+def test_fetch_latest_release_limits_response_size(overlay_module, monkeypatch):
+    mod = overlay_module
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, size=-1):
+            return b"x" * int(size)
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    with pytest.raises(ValueError, match="응답이 너무 큽니다"):
         mod.fetch_latest_release()
 
 
