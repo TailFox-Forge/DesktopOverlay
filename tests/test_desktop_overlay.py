@@ -454,6 +454,65 @@ def test_startup_reentry_does_not_start_second_worker(qapp, overlay_module, monk
         pet.close()
 
 
+def test_policy_read_failure_does_not_mark_image_missing(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    messages = []
+    tooltips = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+
+    class FakeTray:
+        def setToolTip(self, text):
+            tooltips.append(text)
+
+        def showMessage(self, title, body, *_args):
+            messages.append((title, body))
+
+    pet = mod.Pet(dict(mod.DEFAULTS))
+
+    try:
+        pet.tray = FakeTray()
+        pet.need_image = None
+        pet.missing_image_path = None
+        pet._job_id = 7
+
+        pet.on_processing_failed(7, "too-large.png", "read_policy", "이미지가 너무 큽니다")
+
+        assert pet.need_image is None
+        assert pet.missing_image_path is None
+        assert tooltips == []
+        assert messages[-1][0] == "이미지를 읽지 못했습니다"
+    finally:
+        pet.close()
+
+
+def test_missing_read_failure_marks_image_missing(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    tooltips = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+
+    class FakeTray:
+        def setToolTip(self, text):
+            tooltips.append(text)
+
+        def showMessage(self, *_args):
+            pass
+
+    pet = mod.Pet(dict(mod.DEFAULTS))
+
+    try:
+        pet.tray = FakeTray()
+        pet.need_image = None
+        pet._job_id = 8
+
+        pet.on_processing_failed(8, "missing.png", "missing", "파일을 찾을 수 없습니다")
+
+        assert pet.need_image == "missing"
+        assert pet.missing_image_path == "missing.png"
+        assert tooltips == ["%s - 이미지를 선택하세요" % mod.APP_NAME]
+    finally:
+        pet.close()
+
+
 def test_outside_region_keeps_enclosed_area_outside_false(overlay_module):
     mod = overlay_module
     passable = np.ones((7, 7), dtype=bool)
@@ -714,6 +773,14 @@ def test_read_frames_rejects_source_pixels_before_decode(overlay_module, tmp_pat
 
     with pytest.raises(ValueError, match="허용 한도"):
         mod.read_frames(str(path))
+
+
+def test_image_read_errors_are_classified_by_cause(overlay_module):
+    mod = overlay_module
+
+    assert mod.classify_image_read_error(FileNotFoundError("missing")) == "missing"
+    assert mod.classify_image_read_error(mod.ImageReadPolicyError("too large")) == "read_policy"
+    assert mod.classify_image_read_error(RuntimeError("decode failed")) == "read_decode"
 
 
 def test_source_pixel_limit_matches_pillow_and_has_boundary(overlay_module):

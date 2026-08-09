@@ -201,6 +201,10 @@ MOD_NOREPEAT = 0x4000
 ABANDONED_THREADS = []
 
 
+class ImageReadPolicyError(ValueError):
+    """파일은 읽혔지만 이미지 정책상 표시할 수 없을 때 사용한다."""
+
+
 def is_frozen_app():
     return bool(getattr(sys, "frozen", False))
 
@@ -818,7 +822,7 @@ def fit_size_within_pixels(width, height, max_pixels=None):
 def validate_source_pixels(width, height):
     pixels = max(1, int(width) * int(height))
     if pixels > MAX_SOURCE_PIXELS:
-        raise ValueError(
+        raise ImageReadPolicyError(
             "이미지가 너무 큽니다. %dpx는 허용 한도 %dpx를 초과합니다. "
             "이미지 크기를 줄여서 다시 시도하세요."
             % (pixels, MAX_SOURCE_PIXELS))
@@ -867,7 +871,7 @@ def read_frames(path, metadata=None, cancel_check=None):
             last = None
             total = int(getattr(im, "n_frames", 0) or 0)
             if total > MAX_GIF_SOURCE_FRAMES:
-                raise ValueError(
+                raise ImageReadPolicyError(
                     "GIF 프레임이 너무 많습니다. %d프레임은 허용 한도 %d프레임을 초과합니다. "
                     "프레임 수를 줄여서 다시 시도하세요."
                     % (total, MAX_GIF_SOURCE_FRAMES))
@@ -881,7 +885,7 @@ def read_frames(path, metadata=None, cancel_check=None):
                     cancel_check()
                 source_count += 1
                 if source_count > MAX_GIF_SOURCE_FRAMES:
-                    raise ValueError(
+                    raise ImageReadPolicyError(
                         "GIF 프레임이 너무 많습니다. 허용 한도 %d프레임을 초과했습니다. "
                         "프레임 수를 줄여서 다시 시도하세요."
                         % MAX_GIF_SOURCE_FRAMES)
@@ -1085,6 +1089,15 @@ def render_frame_arrays(frames, cfg, bg_color=None, cancel_check=None):
     return rendered
 
 
+def classify_image_read_error(exc):
+    if isinstance(exc, FileNotFoundError):
+        return "missing"
+    decompression_error = getattr(Image, "DecompressionBombError", ())
+    if isinstance(exc, (ImageReadPolicyError, decompression_error)):
+        return "read_policy"
+    return "read_decode"
+
+
 class ImageProcessWorker(QtCore.QObject):
     finished = QtCore.pyqtSignal(int, object)
     failed = QtCore.pyqtSignal(int, str, str, str)
@@ -1118,7 +1131,11 @@ class ImageProcessWorker(QtCore.QObject):
                 except WorkerCancelled:
                     raise
                 except Exception as e:
-                    self.failed.emit(self.job_id, self.path or "", "read", str(e))
+                    self.failed.emit(
+                        self.job_id,
+                        self.path or "",
+                        classify_image_read_error(e),
+                        str(e))
                     return
             self.check_cancelled()
             bg_color = self.cfg.get("bg_color")
@@ -1880,12 +1897,13 @@ class Pet(QtWidgets.QWidget):
     def on_processing_failed(self, job_id, path, kind, message):
         if job_id != self._job_id:
             return
-        read_error = kind == "read"
-        if read_error:
+        missing_error = kind == "missing"
+        read_error = kind in ("missing", "read_policy", "read_decode")
+        if missing_error:
             self.need_image = "missing"
             self.missing_image_path = path
         if self.tray:
-            if read_error:
+            if missing_error:
                 self.tray.setToolTip("%s - 이미지를 선택하세요" % APP_NAME)
             self.tray.showMessage(
                 "이미지를 읽지 못했습니다" if read_error else "이미지 처리에 실패했습니다",
