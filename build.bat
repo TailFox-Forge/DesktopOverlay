@@ -42,9 +42,9 @@ exit /b 0
 
 :FIND_PYTHON
 set "PYTHON_EXE="
-for /f "usebackq delims=" %%P in (`py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1); print(sys.executable)" 2^>nul`) do set "PYTHON_EXE=%%P"
+for /f "usebackq delims=" %%P in (`py -3 -c "import sys; print(sys.executable) if sys.version_info >= (3, 10) else sys.exit(1)" 2^>nul`) do set "PYTHON_EXE=%%P"
 if defined PYTHON_EXE exit /b 0
-for /f "usebackq delims=" %%P in (`python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1); print(sys.executable)" 2^>nul`) do set "PYTHON_EXE=%%P"
+for /f "usebackq delims=" %%P in (`python -c "import sys; print(sys.executable) if sys.version_info >= (3, 10) else sys.exit(1)" 2^>nul`) do set "PYTHON_EXE=%%P"
 if defined PYTHON_EXE exit /b 0
 exit /b 1
 
