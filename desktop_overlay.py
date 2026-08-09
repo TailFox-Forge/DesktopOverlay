@@ -260,10 +260,32 @@ def ps_quote(value):
     return "'%s'" % str(value or "").replace("'", "''")
 
 
+def powershell_executables():
+    candidates = []
+    if os.name == "nt":
+        system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+        if system_root:
+            candidates.append(os.path.join(
+                system_root,
+                "System32",
+                "WindowsPowerShell",
+                "v1.0",
+                "powershell.exe"))
+    candidates.extend(["powershell.exe", "powershell"])
+    unique = []
+    seen = set()
+    for candidate in candidates:
+        key = str(candidate).lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return unique
+
+
 def run_powershell(script):
     last_error = None
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    for executable in ("powershell.exe", "powershell"):
+    for executable in powershell_executables():
         try:
             result = subprocess.run(
                 [executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-"],

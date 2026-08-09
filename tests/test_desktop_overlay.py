@@ -201,6 +201,33 @@ def test_create_startup_shortcut_builds_current_exe_link(overlay_module, tmp_pat
     assert "$shortcut.Save()" in script
 
 
+def test_run_powershell_prefers_system32_executable(overlay_module, monkeypatch):
+    mod = overlay_module
+    calls = []
+    expected = os.path.join(
+        r"C:\Windows",
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe")
+
+    class Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(args, **_kwargs):
+        calls.append(args[0])
+        return Result()
+
+    monkeypatch.setattr(mod.os, "name", "nt")
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    assert mod.run_powershell("Write-Output ok") == "ok"
+    assert calls == [expected]
+
+
 def test_source_startup_uses_pythonw_when_available(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     python = tmp_path / "python.exe"
