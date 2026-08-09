@@ -12,15 +12,15 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.3.2** 입니다.
+현재 최신 릴리스는 **v0.3.3** 입니다.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.2/Desktop_Overlay_Start.exe)
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.3/Desktop_Overlay_Start.exe)
 
 ```text
-SHA256: 607a4932a4ce275f92a089c9cf8a12284d701438a3965b8d2c2400b21de93b5b
+SHA256: bdcc332b8f3694d49819886cab0ae799fd05094b91417d4cdd4bee5809b172b7
 ```
 
-v0.3.2에서는 config.json 직접 편집 경로의 단축키·bool 설정값 검증과 프리릴리스 업데이트 판정을 보강했습니다.
+v0.3.3에서는 수식어가 붙은 정상 단축키 조합을 다시 허용하고 Windows 예약 조합만 명확히 거부하도록 보강했습니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
@@ -295,6 +295,14 @@ pytest
 테두리 없는 창 모드를 사용하세요.
 
 ## 버전별 변경 내역
+
+### [v0.3.3](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.3)
+
+- 단독 `Esc`, `Tab`, `Backspace`, `Delete`는 계속 거부하되 수식어가 붙은 정상 조합은 허용합니다.
+- `Ctrl+Delete`, `Ctrl+Backspace`, `Ctrl+Tab`, `Ctrl+Shift+Delete` 같은 조합을 등록할 수 있게 했습니다.
+- `Ctrl+Alt+Delete`, `Alt+Tab`, `Ctrl+Esc`, `Ctrl+Shift+Esc` 같은 Windows 예약 조합은 계속 거부합니다.
+- 단축키 캡처 UI에서 `Backspace`/`Delete` 삭제 동작은 수식어 없는 입력에만 적용합니다.
+- 예약/허용 단축키 조합에 대한 회귀 테스트를 추가했습니다.
 
 ### [v0.3.2](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.2)
 
