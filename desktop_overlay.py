@@ -27,6 +27,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
 APP_VERSION = "0.3.4"
+REPOSITORY_URL = "https://github.com/TailFox-Forge/DesktopOverlay"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
@@ -746,6 +747,10 @@ def fetch_latest_release():
         "url": safe_release_url(data.get("html_url")),
         "newer": is_newer_version(tag),
     }
+
+
+def open_repository_page():
+    QtGui.QDesktopServices.openUrl(QtCore.QUrl(REPOSITORY_URL))
 
 
 # ---------------------------------------------------------------- 이미지 처리
@@ -1989,6 +1994,8 @@ class Pet(QtWidgets.QWidget):
         dlg.exec_()
 
     def add_update_menu(self, parent):
+        parent.addAction("GitHub 저장소 열기", open_repository_page)
+        parent.addSeparator()
         if self.update_available and self.latest_release:
             tag = self.latest_release.get("tag") or "새 버전"
             parent.addAction("● 업데이트 있음: %s 열기" % tag, self.open_update_page)

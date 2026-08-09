@@ -436,6 +436,16 @@ def test_fetch_latest_release_limits_response_size(overlay_module, monkeypatch):
         mod.fetch_latest_release()
 
 
+def test_open_repository_page_uses_project_url(overlay_module, monkeypatch):
+    mod = overlay_module
+    opened = []
+    monkeypatch.setattr(mod.QtGui.QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
+
+    mod.open_repository_page()
+
+    assert opened == [mod.REPOSITORY_URL]
+
+
 def test_update_worker_reports_unexpected_errors(overlay_module):
     mod = overlay_module
     worker = mod.UpdateCheckWorker(7, False)
