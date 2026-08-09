@@ -25,7 +25,7 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.3.2"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
@@ -149,6 +149,26 @@ VK_SPECIAL_KEYS = {
     "PageDown": 0x22,
     "Space": 0x20,
 }
+SPECIAL_KEY_ALIASES = {name.lower(): name for name in VK_SPECIAL_KEYS}
+SPECIAL_KEY_ALIASES.update({
+    "escape": "Esc",
+    "return": "Enter",
+    "pageup": "PageUp",
+    "pagedown": "PageDown",
+    "print": "PrintScreen",
+    "prtsc": "PrintScreen",
+    "prtscr": "PrintScreen",
+})
+DISALLOWED_HOTKEY_KEYS = {"Esc", "Tab", "Backspace", "Delete"}
+MODIFIER_ALIASES = {
+    "ctrl": "Ctrl",
+    "control": "Ctrl",
+    "alt": "Alt",
+    "shift": "Shift",
+    "win": "Win",
+    "meta": "Win",
+}
+MODIFIER_ORDER = ("Ctrl", "Alt", "Shift", "Win")
 MODIFIER_KEYS = {
     QtCore.Qt.Key_Control,
     QtCore.Qt.Key_Shift,
@@ -308,8 +328,55 @@ def normalize_hotkeys(value):
     if isinstance(value, dict):
         for command, shortcut in value.items():
             if command in hotkeys and isinstance(shortcut, str):
-                hotkeys[command] = shortcut.strip()
+                hotkeys[command] = normalize_shortcut_string(shortcut)
     return hotkeys
+
+
+def normalize_key_name(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    upper = text.upper()
+    if len(upper) == 1 and upper.isalpha():
+        return upper
+    if len(upper) == 1 and upper.isdigit():
+        return upper
+    if upper.startswith("NUM") and upper[3:].isdigit():
+        number = int(upper[3:])
+        if 0 <= number <= 9:
+            return "Num%d" % number
+    if upper.startswith("F") and upper[1:].isdigit():
+        number = int(upper[1:])
+        if 1 <= number <= 24:
+            return "F%d" % number
+    return SPECIAL_KEY_ALIASES.get(text.lower(), "")
+
+
+def normalize_shortcut_string(shortcut):
+    parts = [p.strip() for p in str(shortcut or "").split("+") if p.strip()]
+    if not parts:
+        return ""
+
+    modifiers = set()
+    key_name = ""
+    for part in parts:
+        modifier = MODIFIER_ALIASES.get(part.lower())
+        if modifier:
+            modifiers.add(modifier)
+            continue
+        candidate = normalize_key_name(part)
+        if not candidate or key_name:
+            return ""
+        key_name = candidate
+
+    if not key_name or key_name in DISALLOWED_HOTKEY_KEYS:
+        return ""
+    if not modifiers and not key_name.startswith("Num"):
+        return ""
+
+    ordered = [modifier for modifier in MODIFIER_ORDER if modifier in modifiers]
+    ordered.append(key_name)
+    return "+".join(ordered)
 
 
 def key_name_from_qt(key, keypad=False):
@@ -354,6 +421,7 @@ def shortcut_from_key_event(event):
 
 
 def hotkey_to_windows(shortcut):
+    shortcut = normalize_shortcut_string(shortcut)
     parts = [p.strip() for p in str(shortcut or "").split("+") if p.strip()]
     if not parts:
         return None
@@ -446,7 +514,17 @@ def clamp_float(value, default, low, high):
 
 
 def normalize_bool(value, default):
-    return value if isinstance(value, bool) else bool(default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("true", "1", "yes", "y", "on"):
+            return True
+        if text in ("false", "0", "no", "n", "off"):
+            return False
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    return bool(default)
 
 
 def normalize_color(value, default, allow_none=False):
@@ -613,6 +691,9 @@ def compare_versions(left_tag, right_tag):
 
 
 def is_newer_version(latest_tag, current_version=APP_VERSION):
+    latest = parse_version(latest_tag)
+    if not latest or latest[3]:
+        return False
     compared = compare_versions(latest_tag, current_version)
     return bool(compared and compared > 0)
 

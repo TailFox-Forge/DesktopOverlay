@@ -98,6 +98,59 @@ def test_load_config_normalizes_bad_values(overlay_module):
     assert "설정값 일부" in "\n".join(mod.consume_config_notices())
 
 
+def test_load_config_rejects_unsafe_standalone_hotkeys(overlay_module):
+    mod = overlay_module
+    with open(mod.CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump({
+            "hotkeys": {
+                "toggle_visible": "Space",
+                "show": "Enter",
+                "hide": "F1",
+                "open_image": "Ctrl+O",
+                "flip": "Tab",
+                "click_through": "Num1",
+            },
+        }, f)
+
+    cfg = mod.load_config()
+
+    assert cfg["hotkeys"]["toggle_visible"] == ""
+    assert cfg["hotkeys"]["show"] == ""
+    assert cfg["hotkeys"]["hide"] == ""
+    assert cfg["hotkeys"]["flip"] == ""
+    assert cfg["hotkeys"]["open_image"] == "Ctrl+O"
+    assert cfg["hotkeys"]["click_through"] == "Num1"
+    assert mod.hotkey_to_windows("Space") is None
+    assert mod.hotkey_to_windows("F1") is None
+    assert mod.hotkey_to_windows("Num1") == (mod.MOD_NOREPEAT, 0x61)
+    assert "설정값 일부" in "\n".join(mod.consume_config_notices())
+
+
+def test_load_config_parses_string_bool_values(overlay_module):
+    mod = overlay_module
+    with open(mod.CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump({
+            "topmost": "false",
+            "click_through": "0",
+            "remove_bg": "off",
+            "capturable": "yes",
+            "flip": "1",
+            "hotkeys_enabled": "no",
+            "despill": "not-a-bool",
+        }, f)
+
+    cfg = mod.load_config()
+
+    assert cfg["topmost"] is False
+    assert cfg["click_through"] is False
+    assert cfg["remove_bg"] is False
+    assert cfg["capturable"] is True
+    assert cfg["flip"] is True
+    assert cfg["hotkeys_enabled"] is False
+    assert cfg["despill"] is mod.DEFAULTS["despill"]
+    assert "설정값 일부" in "\n".join(mod.consume_config_notices())
+
+
 def test_save_config_replaces_file_atomically(overlay_module):
     mod = overlay_module
 
@@ -224,6 +277,12 @@ def test_release_version_compare_handles_v_tags(overlay_module):
     assert mod.is_newer_version("v0.2.2", "0.2.1")
     assert mod.is_newer_version("v0.3.0", "0.2.9")
     assert mod.compare_versions("v1.0.0-rc1", "v1.0.0") == -1
+    assert not mod.is_newer_version("1.0.0-beta", "0.3.1")
+    assert not mod.is_newer_version("v1.0.0-rc1", "0.3.1")
+    assert not mod.is_newer_version("0.4.0-alpha", "0.3.1")
+    assert mod.is_newer_version("1.0.0", "0.3.1")
+    assert mod.parse_version("1.2.3a") is None
+    assert mod.parse_version("v1.0.0.final") is None
     assert not mod.is_newer_version("v0.2.1", "0.2.1")
     assert not mod.is_newer_version("v0.2.0", "0.2.1")
     assert not mod.is_newer_version("not-a-version", "0.2.1")
@@ -245,6 +304,25 @@ def test_fetch_latest_release_rejects_prerelease_tag(overlay_module, monkeypatch
     monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
 
     with pytest.raises(ValueError, match="프리릴리스"):
+        mod.fetch_latest_release()
+
+
+def test_fetch_latest_release_rejects_unparseable_tag(overlay_module, monkeypatch):
+    mod = overlay_module
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"tag_name": "v1.0.0.final"}).encode("utf-8")
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+
+    with pytest.raises(ValueError, match="태그 형식"):
         mod.fetch_latest_release()
 
 
