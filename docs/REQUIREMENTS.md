@@ -166,7 +166,7 @@
 | 파이썬 미설치 시 안내 | 완료 | `Desktop_Overlay_Start.bat` 이 설치 페이지로 안내 |
 | 라이브러리 자동 설치 | 완료 | 같은 배치 파일에서 처리 |
 | 설정을 exe 옆에 저장 | 완료 | PyInstaller 배포본은 `sys.executable` 기준 |
-| 빌드 도구 버전 고정 | 완료 | `requirements-release.txt` |
+| 의존성 버전 및 해시 고정 | 완료 | `requirements.txt`, `requirements-release.txt` |
 | 자동 테스트 | 완료 | pytest + GitHub Actions |
 | 태그 릴리즈 자동 빌드 | 완료 | Windows runner에서 zip과 SHA256 생성 |
 

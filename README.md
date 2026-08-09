@@ -86,7 +86,7 @@ Python 3.10 이상이 필요합니다. 현재 소스 실행과 CI는 Python 3.10
 직접 실행할 수도 있습니다.
 
 ```bash
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.txt
 python desktop_overlay.py
 ```
 
@@ -109,7 +109,7 @@ build.bat
 테스트는 아래처럼 실행합니다.
 
 ```bash
-pip install -r requirements-release.txt
+pip install --require-hashes -r requirements-release.txt
 pytest
 ```
 

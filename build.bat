@@ -18,7 +18,7 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
 
 set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
 
-"%VENV_PY%" -m pip install -r "%~dp0requirements-release.txt"
+"%VENV_PY%" -m pip install --require-hashes -r "%~dp0requirements-release.txt"
 if errorlevel 1 goto FAIL
 
 "%VENV_PY%" -m PyInstaller --noconfirm --onedir --windowed ^

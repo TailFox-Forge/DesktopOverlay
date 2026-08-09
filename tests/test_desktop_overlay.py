@@ -57,9 +57,26 @@ def test_build_script_uses_dedicated_build_venv():
 
     assert ".venv-build" in script
     assert "-m venv" in script
-    assert "\"%VENV_PY%\" -m pip install -r" in script
+    assert "\"%VENV_PY%\" -m pip install --require-hashes -r" in script
     assert "\"%VENV_PY%\" -m PyInstaller" in script
     assert "python -m pip install -r requirements-release.txt" not in script
+
+
+def test_dependency_lock_files_use_hash_verification():
+    runtime = read_repo_text("requirements.txt")
+    release = read_repo_text("requirements-release.txt")
+    launcher = read_repo_text("Desktop_Overlay_Start.bat")
+    build_script = read_repo_text("build.bat")
+    ci = read_repo_text(".github", "workflows", "ci.yml")
+    release_workflow = read_repo_text(".github", "workflows", "release.yml")
+    readme = read_repo_text("README.md")
+
+    assert "--hash=sha256:" in runtime
+    assert "--hash=sha256:" in release
+    assert "requirements.in" in read_repo_text("requirements.in")
+    assert "requirements-release.in" in read_repo_text("requirements-release.in")
+    for installer in (launcher, build_script, ci, release_workflow, readme):
+        assert "--require-hashes" in installer
 
 
 def test_release_workflow_refuses_to_overwrite_existing_asset():

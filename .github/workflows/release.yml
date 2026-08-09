@@ -45,7 +45,7 @@ jobs:
 
           Write-Host "APP_VERSION=$appVersion, README 변경 내역 확인 완료"
       - name: Install dependencies
-        run: python -m pip install -r requirements-release.txt
+        run: python -m pip install --require-hashes -r requirements-release.txt
       - name: Compile
         run: python -m py_compile desktop_overlay.py
       - name: Test

@@ -67,11 +67,11 @@ exit /b 1
 echo.
 echo   필요한 라이브러리를 소스 실행용 가상환경에 설치합니다.
 echo.
-"%VENV_PY%" -m pip install -r "%~dp0requirements.txt"
+"%VENV_PY%" -m pip install --require-hashes -r "%~dp0requirements.txt"
 if errorlevel 1 (
   echo.
   echo   설치에 실패했습니다. 아래 명령을 직접 실행해 보세요.
-  echo     "%VENV_PY%" -m pip install -r "%~dp0requirements.txt"
+  echo     "%VENV_PY%" -m pip install --require-hashes -r "%~dp0requirements.txt"
   echo.
   pause
   exit /b 1
