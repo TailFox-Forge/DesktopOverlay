@@ -6,15 +6,15 @@
 
 어떤 이미지든 바탕화면 원하는 위치와 크기에 **배경 없이** 띄워두는 윈도우용 오버레이입니다.
 
-### ⬇ [Desktop_Overlay_Start.exe 내려받기](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest/download/Desktop_Overlay_Start.exe)
+### ⬇ [DesktopOverlay-windows-x64.zip 내려받기](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest/download/DesktopOverlay-windows-x64.zip)
 
-내려받아 더블클릭하면 끝입니다.
+내려받아 압축을 푼 뒤 `Desktop_Overlay_Start.exe` 를 더블클릭하면 끝입니다.
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
 최신 버전과 파일 해시는 [릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 확인하세요.
 
-각 릴리스의 SHA256은 해당 릴리스 노트에 적혀 있습니다.
+각 릴리스 zip의 SHA256은 해당 릴리스 노트에 적혀 있습니다.
 
 버전별로 무엇이 바뀌었는지는 아래 [버전별 변경 내역](#버전별-변경-내역)에 정리되어 있습니다.
 
@@ -44,6 +44,7 @@ GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표�
 대형 GIF는 응답성을 유지하기 위해 자동으로 제한합니다.
 
 - 프레임당 최대 픽셀 수: **4,000,000px**
+- 정적 이미지 원본 최대 픽셀 수: **80,000,000px**
 - GIF당 최대 보관 프레임 수: **180프레임**
 - GIF당 전체 보관 픽셀 예산: **100,000,000px**
 - 제한을 넘는 GIF는 전체 재생 시간을 유지하도록 프레임 간 지연시간을 합산하고, 일부 프레임만 균등 샘플링합니다.
@@ -65,7 +66,7 @@ GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표�
 
 ### 파이썬 없이 (권장)
 
-[릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 `Desktop_Overlay_Start.exe` 를 내려받아 더블클릭하면 됩니다.
+[릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 `DesktopOverlay-windows-x64.zip` 을 내려받아 압축을 푼 뒤 `Desktop_Overlay_Start.exe` 를 더블클릭하면 됩니다.
 
 설정은 기본적으로 exe 가 놓인 폴더에 `config.json` 으로 저장됩니다.
 
@@ -98,7 +99,7 @@ python desktop_overlay.py character.gif
 
 ### exe 직접 빌드
 
-`build.bat` 을 실행하면 고정된 빌드 도구 버전으로 `dist\Desktop_Overlay_Start.exe` 가 만들어집니다.
+`build.bat` 을 실행하면 릴리스와 같은 잠금 파일 기준으로 `dist\Desktop_Overlay_Start\Desktop_Overlay_Start.exe` 가 만들어집니다.
 
 ```bat
 build.bat
@@ -107,7 +108,7 @@ build.bat
 테스트는 아래처럼 실행합니다.
 
 ```bash
-pip install -r requirements.txt -r requirements-build.txt
+pip install -r requirements-release.txt
 pytest
 ```
 
@@ -187,7 +188,7 @@ pytest
 - **숨기기 / 보이기** — 방송 중 즉시 감추기 (트레이 아이콘은 남아 있어 언제든 되돌릴 수 있습니다)
 - **업데이트 확인** — 최신 GitHub 릴리스를 확인하고, 새 버전이 있으면 트레이 아이콘에 빨간점을 표시합니다
 - **GitHub 저장소 열기** — 프로그램 저장소를 브라우저로 엽니다
-- **이미지 열기** / **배경 색 다시 잡기** / **배경 색 직접 고르기**
+- **이미지 열기** / **배경색 자동 추출/다시 잡기** / **배경 색 직접 고르기**
 - **윈도우 시작 시 자동 실행** — Windows 시작프로그램 폴더에 현재 실행 파일의 바로가기를 만들거나 삭제합니다
 - **단축키 활성화 / 비활성화** — 설정해 둔 전역 단축키를 전체 켜거나 끕니다
 - **단축키 설정** — 보이기/숨기기, 크기, 위치, 이미지 열기, 좌우 반전, 항상 위, 클릭 통과 단축키를 등록합니다
@@ -292,6 +293,19 @@ pytest
 테두리 없는 창 모드를 사용하세요.
 
 ## 버전별 변경 내역
+
+### [v0.3.5](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.5)
+
+- 네트워크 공유 경로 이미지를 저장 경로 또는 실행 인자로 사용할 때 UI 스레드에서 `exists` 검사를 하지 않도록 통일했습니다.
+- 실행 인자 경로가 없고 저장된 네트워크 이미지가 있을 때 저장된 이미지를 정상 복원하도록 수정했습니다.
+- 이미지 열기 실패 시 실패한 새 경로를 `config.json`에 먼저 저장하지 않고 기존 정상 경로를 유지합니다.
+- **배경색 자동 추출/다시 잡기** 메뉴가 수동 배경색 지정 후에도 자동 추출 모드로 돌아가게 했습니다.
+- `Win+D`, `Win+L`, `Win+Tab`, `Alt+Esc`, `Alt+Shift+Tab` 같은 Windows 예약 조합은 입력 시점에 안내하고 거부합니다.
+- 자동 실행 적용 직후 종료해도 오래 기다리지 않도록 종료 대기 시간을 줄이고, 아직 끝나지 않은 worker는 안전하게 분리합니다.
+- 정적 이미지 원본 상한을 80MP로 조정하고 초과 시 사용자가 취할 조치를 안내합니다.
+- CI와 로컬 빌드가 릴리스 잠금 파일 `requirements-release.txt`를 공통으로 쓰도록 맞췄습니다.
+- Defender 오탐 가능성을 낮추기 위해 릴리스 배포물을 PyInstaller onefile exe에서 onedir zip으로 변경했습니다.
+- 회귀 테스트를 보강해 네트워크 경로, 예약 단축키, 이미지 경로 보존, 자동 배경 복귀, 픽셀 상한, startup worker 상태 전이를 확인합니다.
 
 ### [v0.3.4](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.4)
 

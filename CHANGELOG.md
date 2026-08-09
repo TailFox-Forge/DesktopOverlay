@@ -1,5 +1,18 @@
 # DesktopOverlay 변경 내역
 
+## [v0.3.5](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.5)
+
+- 네트워크 공유 경로 이미지를 저장 경로 또는 실행 인자로 사용할 때 UI 스레드에서 `exists` 검사를 하지 않도록 통일했습니다.
+- 실행 인자 경로가 없고 저장된 네트워크 이미지가 있을 때 저장된 이미지를 정상 복원하도록 수정했습니다.
+- 이미지 열기 실패 시 실패한 새 경로를 `config.json`에 먼저 저장하지 않고 기존 정상 경로를 유지합니다.
+- **배경색 자동 추출/다시 잡기** 메뉴가 수동 배경색 지정 후에도 자동 추출 모드로 돌아가게 했습니다.
+- `Win+D`, `Win+L`, `Win+Tab`, `Alt+Esc`, `Alt+Shift+Tab` 같은 Windows 예약 조합은 입력 시점에 안내하고 거부합니다.
+- 자동 실행 적용 직후 종료해도 오래 기다리지 않도록 종료 대기 시간을 줄이고, 아직 끝나지 않은 worker는 안전하게 분리합니다.
+- 정적 이미지 원본 상한을 80MP로 조정하고 초과 시 사용자가 취할 조치를 안내합니다.
+- CI와 로컬 빌드가 릴리스 잠금 파일 `requirements-release.txt`를 공통으로 쓰도록 맞췄습니다.
+- Defender 오탐 가능성을 낮추기 위해 릴리스 배포물을 PyInstaller onefile exe에서 onedir zip으로 변경했습니다.
+- 회귀 테스트를 보강해 네트워크 경로, 예약 단축키, 이미지 경로 보존, 자동 배경 복귀, 픽셀 상한, startup worker 상태 전이를 확인합니다.
+
 ## [v0.3.4](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.4)
 
 - 단축키 설정창의 캡처 UI도 `config.json` 정규화와 같은 예약 조합 판정을 사용합니다.

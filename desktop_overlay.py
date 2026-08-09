@@ -26,17 +26,19 @@ from PIL import Image, ImageSequence
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
-APP_VERSION = "0.3.4"
+APP_VERSION = "0.3.5"
 REPOSITORY_URL = "https://github.com/TailFox-Forge/DesktopOverlay"
 RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
 RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
 UPDATE_RESPONSE_MAX_BYTES = 1_000_000
 STARTUP_COMMAND_TIMEOUT_SEC = 15
+STARTUP_SHUTDOWN_WAIT_MS = 2500
+IMAGE_WORKER_SHUTDOWN_WAIT_MS = 2000
 RESAMPLE_LANCZOS = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
 
-# PyInstaller onefile 로 묶으면 __file__ 은 임시 압축 해제 폴더를 가리킨다.
-# 설정은 exe 가 놓인 폴더에 저장해야 다음 실행 때 남아 있다.
+# PyInstaller 로 묶은 배포본은 실행 파일 위치를 기준으로 설정을 저장한다.
+# 그래야 zip을 풀어 둔 폴더에서 다음 실행 때도 같은 설정을 읽는다.
 if getattr(sys, "frozen", False):
     APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
@@ -51,7 +53,7 @@ IMAGE_FILTER = "이미지 (*.gif *.png *.jpg *.jpeg *.webp *.bmp);;모든 파일
 STARTUP_SHORTCUT_NAME = "%s.lnk" % APP_NAME
 MIN_SIZE = 48      # 이보다 작아지면 우클릭 메뉴조차 열기 어려워진다
 MAX_SIZE = 4000
-MAX_SOURCE_PIXELS = 40_000_000
+MAX_SOURCE_PIXELS = 80_000_000
 MAX_FRAME_PIXELS = 4_000_000
 MAX_GIF_FRAMES = 180
 MAX_GIF_TOTAL_PIXELS = 100_000_000
@@ -194,6 +196,7 @@ MOD_CONTROL = 0x0002
 MOD_SHIFT = 0x0004
 MOD_WIN = 0x0008
 MOD_NOREPEAT = 0x4000
+ABANDONED_THREADS = []
 
 
 def is_frozen_app():
@@ -310,6 +313,23 @@ def remove_startup_shortcut(shortcut_path=None):
     return shortcut_path
 
 
+def abandon_thread_until_process_exit(thread):
+    """종료 중 오래 걸리는 worker thread 객체를 부모에서 떼어 QThread 파괴 오류를 피한다."""
+    try:
+        thread.setParent(None)
+    except Exception:
+        pass
+    ABANDONED_THREADS.append(thread)
+
+
+def wait_for_thread_or_abandon(thread, timeout_ms):
+    thread.quit()
+    if thread.wait(timeout_ms):
+        return True
+    abandon_thread_until_process_exit(thread)
+    return False
+
+
 def is_network_path(path):
     text = str(path or "")
     return text.startswith("\\\\") or text.startswith("//")
@@ -321,6 +341,17 @@ def path_exists_without_network_probe(path):
     if is_network_path(path):
         return None
     return os.path.exists(path)
+
+
+def apply_startup_path_argument(cfg, path):
+    """실행 인자로 받은 경로를 저장하되 네트워크 경로는 UI 스레드에서 probe 하지 않는다."""
+    exists = path_exists_without_network_probe(path)
+    if exists is not False:
+        cfg["path"] = path
+        cfg.pop("_startup_missing_path", None)
+    else:
+        cfg["_startup_missing_path"] = path
+    return cfg
 
 
 def normalize_hotkeys(value):
@@ -376,11 +407,27 @@ def normalize_shortcut_string(shortcut):
 
     ordered = [modifier for modifier in MODIFIER_ORDER if modifier in modifiers]
     ordered.append(key_name)
-    if not modifiers and key_name in DISALLOWED_HOTKEY_KEYS:
-        return ""
-    if tuple(ordered) in RESERVED_HOTKEY_COMBOS:
+    if is_reserved_hotkey_combo(modifiers, key_name):
         return ""
     return "+".join(ordered)
+
+
+def is_reserved_hotkey_combo(modifiers, key_name):
+    modifiers = set(modifiers or [])
+    if not modifiers and key_name in DISALLOWED_HOTKEY_KEYS:
+        return True
+    ordered = tuple([modifier for modifier in MODIFIER_ORDER if modifier in modifiers] + [key_name])
+    if ordered in RESERVED_HOTKEY_COMBOS:
+        return True
+    if "Win" in modifiers:
+        return True
+    if key_name == "Tab" and "Alt" in modifiers:
+        return True
+    if key_name == "Esc" and ("Alt" in modifiers or "Ctrl" in modifiers):
+        return True
+    if key_name == "Delete" and {"Ctrl", "Alt"}.issubset(modifiers):
+        return True
+    return False
 
 
 def key_name_from_qt(key, keypad=False):
@@ -769,7 +816,8 @@ def validate_source_pixels(width, height):
     pixels = max(1, int(width) * int(height))
     if pixels > MAX_SOURCE_PIXELS:
         raise ValueError(
-            "이미지가 너무 큽니다. %dpx는 허용 한도 %dpx를 초과합니다."
+            "이미지가 너무 큽니다. %dpx는 허용 한도 %dpx를 초과합니다. "
+            "이미지 크기를 줄여서 다시 시도하세요."
             % (pixels, MAX_SOURCE_PIXELS))
     return pixels
 
@@ -1482,6 +1530,7 @@ class Pet(QtWidgets.QWidget):
         self.need_image = None   # None / "first" / "missing"
         self.missing_image_path = None
         self.startup_missing_path = None
+        self.startup_restored_saved_path = False
         self.ready = False       # 초기화 중에는 위치 보정을 하지 않는다
         self._sized_once = False # 첫 렌더 크기 확정 전에는 640x480 기본 창 중심을 보존하면 안 된다
 
@@ -1504,7 +1553,8 @@ class Pet(QtWidgets.QWidget):
         # 이미지가 없으면 파일 대화상자를 곧바로 띄우지 않는다.
         # 트레이 아이콘이 준비된 뒤 알림으로 안내한다 (main 에서 prompt_if_no_image 호출).
         saved_path_exists = path_exists_without_network_probe(cfg["path"])
-        if startup_missing_path and cfg["path"] and saved_path_exists is True:
+        if startup_missing_path and cfg["path"] and saved_path_exists is not False:
+            self.startup_restored_saved_path = True
             self.load_image(cfg["path"])
         elif startup_missing_path:
             self.need_image = "missing"
@@ -1575,9 +1625,13 @@ class Pet(QtWidgets.QWidget):
         if not self.tray:
             return
         if self.startup_missing_path:
+            if self.startup_restored_saved_path:
+                body = "%s\n저장된 이미지 경로를 대신 불러오는 중입니다." % self.startup_missing_path
+            else:
+                body = "%s" % self.startup_missing_path
             self.tray.showMessage(
                 "전달받은 이미지 경로를 찾을 수 없습니다",
-                "%s\n저장된 이미지가 있으면 대신 복원했습니다." % self.startup_missing_path,
+                body,
                 QtWidgets.QSystemTrayIcon.Warning,
                 10000)
             self.startup_missing_path = None
@@ -1688,10 +1742,8 @@ class Pet(QtWidgets.QWidget):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             None, "띄울 이미지 선택", start, IMAGE_FILTER)
         if path:
-            self.cfg["path"] = path
             self.need_image = None
             self.load_image(path)
-            self.persist()
             if self.tray:
                 self.tray.setToolTip(APP_NAME)
 
@@ -1931,7 +1983,7 @@ class Pet(QtWidgets.QWidget):
         m.addAction("단축키 비활성화" if hotkeys_enabled else "단축키 활성화",
                     self.toggle_hotkeys_enabled)
         m.addAction("단축키 설정…", self.open_hotkey_dialog)
-        m.addAction("배경 색 다시 잡기", self.reauto_bg)
+        m.addAction("배경색 자동 추출/다시 잡기", self.reauto_bg)
         m.addAction("배경 색 직접 고르기…", self.pick_bg_color)
         m.addSeparator()
 
@@ -2045,6 +2097,15 @@ class Pet(QtWidgets.QWidget):
             return
         self._startup_job_id += 1
         job_id = self._startup_job_id
+        if not enabled:
+            try:
+                path = remove_startup_shortcut()
+            except Exception as exc:
+                self.on_startup_failed(job_id, enabled, str(exc))
+            else:
+                self.on_startup_finished(job_id, enabled, path or "")
+            return
+
         self.startup_changing = True
 
         thread = QtCore.QThread(self)
@@ -2221,10 +2282,11 @@ class Pet(QtWidgets.QWidget):
         self.persist()
 
     def reauto_bg(self):
+        self.cfg["auto_bg"] = True
         if self.frames:
             self.cfg["bg_color"] = detect_bg_color(self.frames[0][0]).tolist()
             self.rebuild()
-            self.persist()
+        self.persist()
 
     def pick_bg_color(self):
         c = QtWidgets.QColorDialog.getColor(
@@ -2252,14 +2314,11 @@ class Pet(QtWidgets.QWidget):
         self.flush_persist()
         self.cancel_processing_workers()
         for _worker, thread in list(self._workers):
-            thread.quit()
-            thread.wait(2000)
+            wait_for_thread_or_abandon(thread, IMAGE_WORKER_SHUTDOWN_WAIT_MS)
         for _worker, thread in list(self._update_workers):
-            thread.quit()
-            thread.wait((UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000)
+            wait_for_thread_or_abandon(thread, (UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000)
         for _worker, thread in list(self._startup_workers):
-            thread.quit()
-            thread.wait((STARTUP_COMMAND_TIMEOUT_SEC + 2) * 1000)
+            wait_for_thread_or_abandon(thread, STARTUP_SHUTDOWN_WAIT_MS)
 
     def hotkey_target_screen(self):
         wanted = self.cfg.get("hotkey_screen") or ""
@@ -2389,10 +2448,7 @@ def main():
     app.setQuitOnLastWindowClosed(False)
     cfg = load_config()
     if len(sys.argv) > 1:
-        if os.path.exists(sys.argv[1]):
-            cfg["path"] = sys.argv[1]
-        else:
-            cfg["_startup_missing_path"] = sys.argv[1]
+        apply_startup_path_argument(cfg, sys.argv[1])
 
     pet = Pet(cfg)                 # 참조를 유지해야 창이 사라지지 않는다
     tray = Tray(pet)

@@ -251,6 +251,34 @@ def test_network_path_is_not_probed_on_startup(qapp, overlay_module, monkeypatch
         pet.close()
 
 
+def test_unc_saved_path_is_restored_when_startup_arg_is_missing(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    saved_path = r"\\nas\share\overlay.gif"
+    missing_arg = "C:/missing.gif"
+    loaded = []
+
+    def fake_exists(path):
+        if str(path).startswith("\\\\"):
+            raise AssertionError("network path was probed on UI thread")
+        return False
+
+    monkeypatch.setattr(mod.os.path, "exists", fake_exists)
+    monkeypatch.setattr(mod.Pet, "load_image", lambda self, path: loaded.append(path))
+    cfg = dict(mod.DEFAULTS)
+    cfg["path"] = saved_path
+    cfg["_startup_missing_path"] = missing_arg
+
+    pet = mod.Pet(cfg)
+
+    try:
+        assert loaded == [saved_path]
+        assert pet.startup_restored_saved_path is True
+        assert pet.startup_missing_path == missing_arg
+        assert pet.need_image is None
+    finally:
+        pet.close()
+
+
 def test_path_exists_without_network_probe_returns_unknown_for_unc(overlay_module, monkeypatch):
     mod = overlay_module
 
@@ -260,6 +288,28 @@ def test_path_exists_without_network_probe_returns_unknown_for_unc(overlay_modul
         lambda path: (_ for _ in ()).throw(AssertionError("network path was probed")))
 
     assert mod.path_exists_without_network_probe(r"\\offline-server\share\x.png") is None
+
+
+def test_startup_argument_uses_non_blocking_network_path_policy(overlay_module, monkeypatch):
+    mod = overlay_module
+    network_path = r"\\offline-server\share\arg.gif"
+    missing_path = "C:/missing.gif"
+
+    def fake_exists(path):
+        if str(path).startswith("\\\\"):
+            raise AssertionError("network path was probed on UI thread")
+        return False
+
+    monkeypatch.setattr(mod.os.path, "exists", fake_exists)
+
+    cfg = dict(mod.DEFAULTS)
+    mod.apply_startup_path_argument(cfg, network_path)
+    assert cfg["path"] == network_path
+    assert "_startup_missing_path" not in cfg
+
+    cfg = dict(mod.DEFAULTS)
+    mod.apply_startup_path_argument(cfg, missing_path)
+    assert cfg["_startup_missing_path"] == missing_path
 
 
 def test_startup_state_only_checks_shortcut_existence(overlay_module, tmp_path, monkeypatch):
@@ -292,7 +342,7 @@ def test_startup_worker_reports_create_result(qapp, overlay_module, monkeypatch)
     assert failures == []
 
 
-def test_shutdown_waits_for_startup_worker_timeout_budget(qapp, overlay_module, monkeypatch):
+def test_shutdown_uses_short_startup_worker_wait(qapp, overlay_module, monkeypatch):
     mod = overlay_module
     monkeypatch.setattr(mod, "save_config", lambda cfg: None)
 
@@ -320,12 +370,86 @@ def test_shutdown_waits_for_startup_worker_timeout_budget(qapp, overlay_module, 
         pet.shutdown()
 
         assert startup_thread.quit_called
-        assert startup_thread.wait_timeouts == [
-            (mod.STARTUP_COMMAND_TIMEOUT_SEC + 2) * 1000
-        ]
+        assert startup_thread.wait_timeouts == [mod.STARTUP_SHUTDOWN_WAIT_MS]
         assert update_thread.wait_timeouts == [
             (mod.UPDATE_CHECK_TIMEOUT_SEC + 2) * 1000
         ]
+    finally:
+        pet.close()
+
+
+def test_shutdown_abandons_still_running_image_thread(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+    mod.ABANDONED_THREADS[:] = []
+
+    class FakeThread:
+        def __init__(self):
+            self.parent_cleared = False
+            self.wait_timeouts = []
+
+        def quit(self):
+            pass
+
+        def wait(self, timeout_ms):
+            self.wait_timeouts.append(timeout_ms)
+            return False
+
+        def setParent(self, parent):
+            self.parent_cleared = parent is None
+
+    cfg = dict(mod.DEFAULTS)
+    pet = mod.Pet(cfg)
+    thread = FakeThread()
+
+    try:
+        pet._workers = [(object(), thread)]
+        pet.shutdown()
+
+        assert thread.wait_timeouts == [mod.IMAGE_WORKER_SHUTDOWN_WAIT_MS]
+        assert thread.parent_cleared
+        assert thread in mod.ABANDONED_THREADS
+    finally:
+        pet.close()
+        mod.ABANDONED_THREADS[:] = []
+
+
+def test_startup_disable_removes_shortcut_without_worker(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    removed = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+    monkeypatch.setattr(mod, "remove_startup_shortcut", lambda: removed.append(True) or "link")
+
+    pet = mod.Pet(dict(mod.DEFAULTS))
+
+    try:
+        pet.set_startup_enabled(False)
+
+        assert removed == [True]
+        assert pet._startup_workers == []
+        assert not pet.startup_changing
+    finally:
+        pet.close()
+
+
+def test_startup_reentry_does_not_start_second_worker(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    notices = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+
+    class FakeTray:
+        def showMessage(self, title, body, *_args):
+            notices.append((title, body))
+
+    pet = mod.Pet(dict(mod.DEFAULTS))
+
+    try:
+        pet.tray = FakeTray()
+        pet.startup_changing = True
+        pet.set_startup_enabled(True)
+
+        assert pet._startup_workers == []
+        assert notices
     finally:
         pet.close()
 
@@ -360,6 +484,22 @@ def test_outside_region_has_iteration_limit(overlay_module):
 
     with pytest.raises(RuntimeError, match="너무 오래"):
         mod.outside_region(passable, max_iterations=0)
+
+
+def test_outside_region_default_limit_handles_snaking_mask(overlay_module):
+    mod = overlay_module
+    passable = np.zeros((24, 24), dtype=bool)
+    for row in range(passable.shape[0]):
+        if row % 2 == 0:
+            passable[row, :] = True
+        else:
+            passable[row, -1] = True
+
+    outside = mod.outside_region(passable)
+
+    assert outside[0, 0]
+    assert outside[-1, -1]
+    assert np.array_equal(outside, passable)
 
 
 def test_transparent_border_is_preserved(overlay_module):
@@ -453,6 +593,13 @@ def test_fetch_latest_release_sanitizes_untrusted_release_url(overlay_module, mo
 
     assert result["url"] == mod.RELEASES_LATEST_URL
     assert result["newer"]
+
+
+def test_safe_release_url_allows_project_release_urls(overlay_module):
+    mod = overlay_module
+    url = "https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.5"
+
+    assert mod.safe_release_url(url) == url
 
 
 def test_fetch_latest_release_limits_response_size(overlay_module, monkeypatch):
@@ -553,6 +700,15 @@ def test_read_frames_rejects_source_pixels_before_decode(overlay_module, tmp_pat
 
     with pytest.raises(ValueError, match="허용 한도"):
         mod.read_frames(str(path))
+
+
+def test_source_pixel_limit_matches_pillow_and_has_boundary(overlay_module):
+    mod = overlay_module
+
+    assert mod.Image.MAX_IMAGE_PIXELS == mod.MAX_SOURCE_PIXELS
+    assert mod.validate_source_pixels(mod.MAX_SOURCE_PIXELS, 1) == mod.MAX_SOURCE_PIXELS
+    with pytest.raises(ValueError, match="이미지 크기를 줄여서"):
+        mod.validate_source_pixels(mod.MAX_SOURCE_PIXELS + 1, 1)
 
 
 def test_read_frames_closes_image_file(overlay_module, tmp_path, monkeypatch):
@@ -666,8 +822,14 @@ def test_shortcut_allows_numpad_digit_without_modifier(overlay_module):
     "Esc",
     "Ctrl+Alt+Delete",
     "Alt+Tab",
+    "Alt+Esc",
+    "Alt+Shift+Tab",
+    "Ctrl+Alt+Tab",
     "Ctrl+Esc",
     "Ctrl+Shift+Esc",
+    "Win+D",
+    "Win+L",
+    "Win+Tab",
 ])
 def test_shortcut_rejects_single_reserved_keys_and_windows_reserved_combos(overlay_module, shortcut):
     mod = overlay_module
@@ -723,7 +885,9 @@ def test_hotkey_capture_delete_only_clears_without_modifiers(qapp, overlay_modul
     (QtCore.Qt.Key_Tab, QtCore.Qt.ControlModifier, "Ctrl+Tab"),
     (QtCore.Qt.Key_Tab, QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier, "Ctrl+Shift+Tab"),
     (QtCore.Qt.Key_Tab, QtCore.Qt.AltModifier, ""),
+    (QtCore.Qt.Key_Tab, QtCore.Qt.MetaModifier, ""),
     (QtCore.Qt.Key_Escape, QtCore.Qt.ControlModifier, ""),
+    (QtCore.Qt.Key_Escape, QtCore.Qt.AltModifier, ""),
     (QtCore.Qt.Key_Escape, QtCore.Qt.ControlModifier | QtCore.Qt.ShiftModifier, ""),
 ])
 def test_hotkey_capture_uses_same_reserved_combo_rules(qapp, overlay_module, key, modifiers, expected):
@@ -900,5 +1064,58 @@ def test_persist_debounces_until_flush(qapp, overlay_module, monkeypatch):
 
         pet.flush_persist()
         assert len(writes) == 1
+    finally:
+        pet.close()
+
+
+def test_pick_file_keeps_previous_path_until_new_image_succeeds(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    old_path = "C:/ok.png"
+    new_path = "C:/broken.png"
+    loaded = []
+    writes = []
+    monkeypatch.setattr(mod, "save_config", lambda cfg: writes.append(dict(cfg)))
+    monkeypatch.setattr(
+        mod.QtWidgets.QFileDialog,
+        "getOpenFileName",
+        lambda *_args, **_kwargs: (new_path, ""),
+    )
+    monkeypatch.setattr(mod.Pet, "load_image", lambda self, path: loaded.append(path))
+    cfg = dict(mod.DEFAULTS)
+    cfg["path"] = old_path
+
+    pet = mod.Pet(cfg)
+
+    try:
+        writes.clear()
+        pet.pick_file()
+
+        assert loaded[-1] == new_path
+        assert pet.cfg["path"] == old_path
+        assert writes == []
+    finally:
+        pet.close()
+
+
+def test_reauto_bg_returns_to_auto_mode(qapp, overlay_module, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "save_config", lambda cfg: None)
+    rebuilt = []
+    monkeypatch.setattr(mod.Pet, "rebuild", lambda self: rebuilt.append(True))
+    cfg = dict(mod.DEFAULTS)
+    cfg["auto_bg"] = False
+    cfg["bg_color"] = [1, 2, 3]
+    pet = mod.Pet(cfg)
+    frame = np.zeros((4, 4, 4), dtype=np.uint8)
+    frame[:, :, :3] = [20, 30, 40]
+    frame[:, :, 3] = 255
+
+    try:
+        pet.frames = [(frame, 100)]
+        pet.reauto_bg()
+
+        assert pet.cfg["auto_bg"] is True
+        assert pet.cfg["bg_color"] == [20, 30, 40]
+        assert rebuilt == [True]
     finally:
         pet.close()
