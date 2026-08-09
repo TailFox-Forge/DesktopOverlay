@@ -83,7 +83,7 @@ DEFAULTS = {
     "anchor": None,          # 위치 바로가기로 옮겼을 때 {"screen","hx","vy"}. 직접 끌면 None
     "snap_margin": 0,        # 구석으로 보낼 때 띄울 여백(px)
     "chroma_bg": None,       # [r,g,b] 이면 창을 그 색으로 채운다 (윈도우 캡처 + 컬러키용)
-    "click_through": True,   # 기본: 마우스 통과 (게임 조작 방해 없음)
+    "click_through": False,  # 기본: 직접 드래그로 위치 조절 가능
     "flip": False,
     "topmost": True,         # 기본: 항상 위
     "hotkeys": {},           # 기본은 전부 미등록. 사용자가 설정창에서 직접 넣는다

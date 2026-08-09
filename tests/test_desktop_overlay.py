@@ -50,6 +50,14 @@ def test_source_documentation_requires_python_310():
     assert "Python 3.10 이상" in requirements
 
 
+def test_click_through_default_starts_disabled(overlay_module):
+    mod = overlay_module
+    cfg = mod.normalize_config({})
+
+    assert mod.DEFAULTS["click_through"] is False
+    assert cfg["click_through"] is False
+
+
 def test_source_launcher_uses_dedicated_runtime_venv():
     script = read_repo_text("Desktop_Overlay_Start.bat")
 
