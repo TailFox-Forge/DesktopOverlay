@@ -120,6 +120,16 @@ def test_dependency_lock_files_use_hash_verification():
         assert "--require-hashes" in installer
 
 
+def test_ci_verifies_bad_hashes_are_rejected():
+    ci = read_repo_text(".github", "workflows", "ci.yml")
+
+    assert "Verify pip rejects bad hashes" in ci
+    assert "bad-hash-requirements.txt" in ci
+    assert "colorama==0.4.6 --hash=sha256:" in ci
+    assert "--dry-run" in ci
+    assert "sys.exit(0 if result.returncode != 0 else 1)" in ci
+
+
 def test_release_workflow_refuses_to_overwrite_existing_asset():
     workflow = read_repo_text(".github", "workflows", "release.yml")
 
