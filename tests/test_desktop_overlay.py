@@ -692,6 +692,20 @@ def test_read_frames_limits_gif_after_downscale(overlay_module, tmp_path, monkey
     assert all(frame.shape == (5, 5, 4) for frame, _delay in loaded)
 
 
+def test_read_frames_rejects_excessive_gif_source_frames(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    monkeypatch.setattr(mod, "MAX_GIF_SOURCE_FRAMES", 3)
+    frames = [
+        mod.Image.new("RGBA", (2, 2), (i * 40, 0, 0, 255))
+        for i in range(5)
+    ]
+    path = tmp_path / "too-many-frames.gif"
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=[20] * 5, loop=0)
+
+    with pytest.raises(ValueError, match="프레임이 너무 많"):
+        mod.read_frames(str(path))
+
+
 def test_read_frames_rejects_source_pixels_before_decode(overlay_module, tmp_path, monkeypatch):
     mod = overlay_module
     monkeypatch.setattr(mod, "MAX_SOURCE_PIXELS", 100)

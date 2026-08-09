@@ -56,6 +56,7 @@ MAX_SIZE = 4000
 MAX_SOURCE_PIXELS = 80_000_000
 MAX_FRAME_PIXELS = 4_000_000
 MAX_GIF_FRAMES = 180
+MAX_GIF_SOURCE_FRAMES = 5_000
 MAX_GIF_TOTAL_PIXELS = 100_000_000
 MAX_OUTSIDE_SWEEP_ITERATIONS = 10_000
 PROCESSING_TOOLTIP = "%s - 이미지 처리 중..." % APP_NAME
@@ -865,6 +866,11 @@ def read_frames(path, metadata=None, cancel_check=None):
         if getattr(im, "is_animated", False):
             last = None
             total = int(getattr(im, "n_frames", 0) or 0)
+            if total > MAX_GIF_SOURCE_FRAMES:
+                raise ValueError(
+                    "GIF 프레임이 너무 많습니다. %d프레임은 허용 한도 %d프레임을 초과합니다. "
+                    "프레임 수를 줄여서 다시 시도하세요."
+                    % (total, MAX_GIF_SOURCE_FRAMES))
             stored_w, stored_h = fit_size_within_pixels(im.size[0], im.size[1])
             frame_limit = frame_limit_for_image(stored_w, stored_h)
             selected = selected_frame_indices(total, frame_limit) if total else None
@@ -874,6 +880,11 @@ def read_frames(path, metadata=None, cancel_check=None):
                 if cancel_check:
                     cancel_check()
                 source_count += 1
+                if source_count > MAX_GIF_SOURCE_FRAMES:
+                    raise ValueError(
+                        "GIF 프레임이 너무 많습니다. 허용 한도 %d프레임을 초과했습니다. "
+                        "프레임 수를 줄여서 다시 시도하세요."
+                        % MAX_GIF_SOURCE_FRAMES)
                 cur = frame.convert("RGBA")
                 if last is not None and frame.tile:
                     # 부분 갱신 프레임이면 이전 프레임 위에 합성
