@@ -430,6 +430,42 @@ def test_read_frames_limits_gif_after_downscale(overlay_module, tmp_path, monkey
     assert all(frame.shape == (5, 5, 4) for frame, _delay in loaded)
 
 
+def test_read_frames_closes_image_file(overlay_module, tmp_path, monkeypatch):
+    mod = overlay_module
+    path = tmp_path / "sample.png"
+    mod.Image.new("RGBA", (4, 4), (255, 0, 0, 255)).save(path)
+    real_open = mod.Image.open
+    opened = []
+
+    class ImageProxy:
+        def __init__(self, image):
+            self.image = image
+            self.closed = False
+
+        def __enter__(self):
+            return self.image
+
+        def __exit__(self, *_args):
+            self.closed = True
+            self.image.close()
+            return False
+
+        def __getattr__(self, name):
+            return getattr(self.image, name)
+
+    def open_proxy(*args, **kwargs):
+        proxy = ImageProxy(real_open(*args, **kwargs))
+        opened.append(proxy)
+        return proxy
+
+    monkeypatch.setattr(mod.Image, "open", open_proxy)
+
+    frames = mod.read_frames(str(path))
+
+    assert frames
+    assert opened[0].closed
+
+
 def test_render_frame_arrays_can_be_cancelled(overlay_module):
     mod = overlay_module
     frames = [(np.zeros((3, 3, 4), dtype=np.uint8), 100)]

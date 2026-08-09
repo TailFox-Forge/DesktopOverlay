@@ -804,53 +804,53 @@ def frame_to_array(image, metadata=None):
 
 def read_frames(path, metadata=None, cancel_check=None):
     """어떤 이미지든 (RGBA numpy 배열, 지속시간ms) 목록으로 읽는다."""
-    im = Image.open(path)
     frames = []
-    if getattr(im, "is_animated", False):
-        last = None
-        total = int(getattr(im, "n_frames", 0) or 0)
-        stored_w, stored_h = fit_size_within_pixels(im.size[0], im.size[1])
-        frame_limit = frame_limit_for_image(stored_w, stored_h)
-        selected = selected_frame_indices(total, frame_limit) if total else None
-        pending_delay = 0
-        source_count = 0
-        for index, frame in enumerate(ImageSequence.Iterator(im)):
+    with Image.open(path) as im:
+        if getattr(im, "is_animated", False):
+            last = None
+            total = int(getattr(im, "n_frames", 0) or 0)
+            stored_w, stored_h = fit_size_within_pixels(im.size[0], im.size[1])
+            frame_limit = frame_limit_for_image(stored_w, stored_h)
+            selected = selected_frame_indices(total, frame_limit) if total else None
+            pending_delay = 0
+            source_count = 0
+            for index, frame in enumerate(ImageSequence.Iterator(im)):
+                if cancel_check:
+                    cancel_check()
+                source_count += 1
+                cur = frame.convert("RGBA")
+                if last is not None and frame.tile:
+                    # 부분 갱신 프레임이면 이전 프레임 위에 합성
+                    merged = last.copy()
+                    merged.alpha_composite(cur)
+                    cur = merged
+                last = cur
+                delay = frame.info.get("duration", 100) or 100
+                delay = max(20, int(delay))
+                if selected is None or index in selected:
+                    frames.append((frame_to_array(cur, metadata), pending_delay + delay))
+                    pending_delay = 0
+                else:
+                    pending_delay += delay
+            if pending_delay and frames:
+                frame, delay = frames[-1]
+                frames[-1] = (frame, delay + pending_delay)
+            if metadata is not None:
+                metadata["source_frame_count"] = source_count
+                metadata["stored_frame_count"] = len(frames)
+                metadata["frame_limit"] = frame_limit
+                metadata["dropped_frames"] = max(0, source_count - len(frames))
+                metadata["source_pixels"] = int(im.size[0]) * int(im.size[1])
+                metadata["stored_pixels"] = int(stored_w) * int(stored_h)
+                metadata["total_pixel_limit"] = MAX_GIF_TOTAL_PIXELS
+        else:
             if cancel_check:
                 cancel_check()
-            source_count += 1
-            cur = frame.convert("RGBA")
-            if last is not None and frame.tile:
-                # 부분 갱신 프레임이면 이전 프레임 위에 합성
-                merged = last.copy()
-                merged.alpha_composite(cur)
-                cur = merged
-            last = cur
-            delay = frame.info.get("duration", 100) or 100
-            delay = max(20, int(delay))
-            if selected is None or index in selected:
-                frames.append((frame_to_array(cur, metadata), pending_delay + delay))
-                pending_delay = 0
-            else:
-                pending_delay += delay
-        if pending_delay and frames:
-            frame, delay = frames[-1]
-            frames[-1] = (frame, delay + pending_delay)
-        if metadata is not None:
-            metadata["source_frame_count"] = source_count
-            metadata["stored_frame_count"] = len(frames)
-            metadata["frame_limit"] = frame_limit
-            metadata["dropped_frames"] = max(0, source_count - len(frames))
-            metadata["source_pixels"] = int(im.size[0]) * int(im.size[1])
-            metadata["stored_pixels"] = int(stored_w) * int(stored_h)
-            metadata["total_pixel_limit"] = MAX_GIF_TOTAL_PIXELS
-    else:
-        if cancel_check:
-            cancel_check()
-        frames.append((frame_to_array(im.convert("RGBA"), metadata), 100))
-        if metadata is not None:
-            metadata["source_frame_count"] = 1
-            metadata["stored_frame_count"] = 1
-            metadata["dropped_frames"] = 0
+            frames.append((frame_to_array(im.convert("RGBA"), metadata), 100))
+            if metadata is not None:
+                metadata["source_frame_count"] = 1
+                metadata["stored_frame_count"] = 1
+                metadata["dropped_frames"] = 0
     return frames
 
 
