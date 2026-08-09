@@ -12,15 +12,15 @@
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-현재 최신 릴리스는 **v0.3.0** 입니다.
+현재 최신 릴리스는 **v0.3.1** 입니다.
 
-직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.0/Desktop_Overlay_Start.exe)
+직접 내려받기: [Desktop_Overlay_Start.exe](https://github.com/TailFox-Forge/DesktopOverlay/releases/download/v0.3.1/Desktop_Overlay_Start.exe)
 
 ```text
-SHA256: 8a71faa21c5e5370cce8a0a65d38cf8fbed00f32dd8062d4fbd505e704b68d99
+SHA256: c91a0e2c703ca85ae36c0f42ba18bbbe371650947ba99d5530eaac677cbf3152
 ```
 
-v0.3.0에서는 트레이 메뉴에서 Windows 시작 시 자동 실행을 켜고 끌 수 있습니다. 레지스트리가 아니라 시작프로그램 폴더의 `DesktopOverlay.lnk` 바로가기를 만들고 삭제합니다.
+v0.3.1에서는 설정값 검증, 대형 GIF 처리 취소/메모리 정리, 업데이트 버전 비교, 자동 실행 메뉴 응답성, 전역 단축키 안전 정책을 보강했습니다.
 
 GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표시합니다. 
 
