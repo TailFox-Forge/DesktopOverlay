@@ -150,10 +150,28 @@ def test_release_workflow_refuses_to_overwrite_existing_asset():
     assert 'gh release download "$TAG" --repo "$REPO" --pattern "$ASSET_NAME"' in workflow
     assert "Updated notes and skipped upload" in workflow
     assert "gh release delete-asset $TAG $ASSET_NAME --repo $REPO --yes" in workflow
-    first_edit = workflow.index('gh release edit "$TAG"')
-    assert workflow.index("ASSET_COUNT=") < first_edit
+    assert workflow.index("ASSET_COUNT=") < workflow.index("EXISTING_SHA=")
+    assert workflow.index("EXISTING_SHA=") < workflow.index('if [ "$EXISTING_SHA" = "$CURRENT_SHA" ]; then')
+
+    before_sha_match, after_sha_match = workflow.split(
+        'if [ "$EXISTING_SHA" = "$CURRENT_SHA" ]; then',
+        1,
+    )
+    identical_asset_block, after_identical_asset_block = after_sha_match.split(
+        'fi\n              echo "::error::Release',
+        1,
+    )
+    mismatch_error_block, no_existing_asset_block = after_identical_asset_block.split(
+        'fi\n            gh release upload',
+        1,
+    )
+
+    assert 'gh release edit "$TAG"' not in before_sha_match
+    assert 'gh release edit "$TAG"' in identical_asset_block
+    assert 'gh release edit "$TAG"' not in mismatch_error_block
     assert 'gh release upload "$TAG" "$ZIP_PATH" --repo "$REPO"' in workflow
     assert workflow.index('gh release upload "$TAG" "$ZIP_PATH" --repo "$REPO"') < workflow.rindex('gh release edit "$TAG"')
+    assert 'gh release edit "$TAG"' in no_existing_asset_block
 
 
 @pytest.fixture(scope="session")
