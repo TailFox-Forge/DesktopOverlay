@@ -24,11 +24,11 @@ def read_repo_text(*parts):
 def test_failed_release_tags_are_not_linked_as_downloadable_releases():
     for relative_path in ("README.md", "CHANGELOG.md"):
         text = read_repo_text(relative_path)
-        for tag in ("v0.3.8", "v0.3.9", "v0.3.12"):
+        for tag in ("v0.3.8", "v0.3.9", "v0.3.12", "v0.3.13"):
             assert "releases/tag/%s" % tag not in text
             assert "%s - 릴리스 게시 실패 태그" % tag in text
         assert "실제 배포는 `v0.3.10`에 통합됐습니다." in text
-        assert "실제 배포는 `v0.3.13`에 통합됐습니다." in text
+        assert "실제 배포는 `v0.3.14`에 통합됐습니다." in text
 
 
 def test_source_documentation_requires_python_310():
@@ -73,6 +73,7 @@ def test_dependency_lock_files_use_hash_verification():
 
     assert "--hash=sha256:" in runtime
     assert "--hash=sha256:" in release
+    assert "colorama==0.4.6" in release
     assert "pefile==2024.8.26" in release
     assert "pywin32-ctypes==0.2.3" in release
     assert "requirements.in" in read_repo_text("requirements.in")

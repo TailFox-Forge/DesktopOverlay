@@ -299,7 +299,17 @@ pytest
 
 ## 버전별 변경 내역
 
-### [v0.3.13](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.13)
+### [v0.3.14](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.14)
+
+- `v0.3.13` 릴리스 게시 실패 원인이던 Windows `pytest` 전이 의존성 `colorama`를 해시 lock에 명시했습니다.
+- `v0.3.12`, `v0.3.13`에서 준비한 이슈 #61~#67 수정 내용을 실제 배포본으로 통합했습니다.
+- 클릭 통과가 켜져도 아래 창 버튼이 눌리지 않을 수 있어, `WM_NCHITTEST` fallback과 함께 Win32 `WS_EX_TRANSPARENT` 확장 스타일을 적용하도록 보강했습니다.
+
+### v0.3.13 - 릴리스 게시 실패 태그
+
+- Git 태그는 남아 있지만 GitHub Release와 배포 파일은 생성되지 않았습니다.
+- Windows CI에서 `pytest`의 Windows 전용 전이 의존성 `colorama`가 해시 lock에 없어 설치 단계가 실패했습니다.
+- 실제 배포는 `v0.3.14`에 통합됐습니다.
 
 - `v0.3.12` 릴리스 게시 실패 원인이던 Windows 전용 PyInstaller 의존성 `pefile`, `pywin32-ctypes`를 해시 lock에 명시했습니다.
 - `v0.3.12`의 이슈 #61~#66 수정 내용을 실제 배포본으로 통합했습니다.
@@ -309,7 +319,7 @@ pytest
 
 - Git 태그는 남아 있지만 GitHub Release와 배포 파일은 생성되지 않았습니다.
 - Windows CI에서 PyInstaller의 Windows 전용 전이 의존성 `pefile`이 해시 lock에 없어 설치 단계가 실패했습니다.
-- 실제 배포는 `v0.3.13`에 통합됐습니다.
+- 실제 배포는 `v0.3.14`에 통합됐습니다.
 
 - `v0.3.8`, `v0.3.9` 실패 태그가 실제 릴리스 링크처럼 보이지 않도록 README와 CHANGELOG 표기를 정리했습니다.
 - 소스 실행 문서의 Python 요구사항을 실제 의존성/CI 기준인 Python 3.10 이상으로 정정했습니다.
