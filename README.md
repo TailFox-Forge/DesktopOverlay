@@ -299,6 +299,11 @@ pytest
 
 ## 버전별 변경 내역
 
+### [v0.3.10](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.10)
+
+- Release workflow 게시 job이 checkout 없이도 저장소를 정확히 지정하도록 `gh release` 명령에 repository를 명시했습니다.
+- `v0.3.8`~`v0.3.9`의 이슈 #54~#60 수정 내용과 릴리스 workflow 보강을 포함합니다.
+
 ### [v0.3.9](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.9)
 
 - `v0.3.8` 릴리스 워크플로의 게시 단계가 다운로드된 artifact 내부 경로를 고정 가정하지 않도록 보강했습니다.
