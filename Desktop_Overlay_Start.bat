@@ -11,7 +11,7 @@ if errorlevel 1 goto NOPYTHON
 
 if not exist "%VENV_DIR%\Scripts\python.exe" (
   echo.
-  echo   소스 실행용 가상환경을 만듭니다: %VENV_DIR%
+  echo   소스 실행용 가상환경을 만듭니다.
   echo.
   "%PYTHON_EXE%" -m venv "%VENV_DIR%"
   if errorlevel 1 goto VENVFAIL
