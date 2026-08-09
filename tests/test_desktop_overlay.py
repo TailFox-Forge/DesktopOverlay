@@ -31,6 +31,16 @@ def test_failed_release_tags_are_not_linked_as_downloadable_releases():
         assert "실제 배포는 `v0.3.10`에 통합됐습니다." in text
 
 
+def test_source_documentation_requires_python_310():
+    readme = read_repo_text("README.md")
+    requirements = read_repo_text("docs", "REQUIREMENTS.md")
+
+    assert "Python 3.8" not in readme
+    assert "Python 3.8" not in requirements
+    assert "Python 3.10 이상이 필요합니다." in readme
+    assert "Python 3.10 이상" in requirements
+
+
 @pytest.fixture(scope="session")
 def qapp():
     app = QtWidgets.QApplication.instance()

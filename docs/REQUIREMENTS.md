@@ -204,7 +204,7 @@ GitHub 가 자동으로 제공하는 **Source code (zip/tar.gz)** 는 태그가 
 
 ## 기술 스택
 
-Python 3.8 이상, PyQt5, Pillow, numpy.
+Python 3.10 이상, PyQt5, Pillow, numpy.
 
 클릭 통과는 `WM_NCHITTEST`에 `HTTRANSPARENT`를 반환하는 방식으로 구현한다.
 
