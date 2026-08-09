@@ -79,9 +79,9 @@ Python 3.10 이상이 필요합니다. 현재 소스 실행과 CI는 Python 3.10
 
 릴리스 페이지의 **Source code (zip)** 을 받거나 저장소를 클론하세요.
 
-`Desktop_Overlay_Start.bat` 을 더블클릭하면 파이썬과 라이브러리를 점검한 뒤 실행합니다.
+`Desktop_Overlay_Start.bat` 을 더블클릭하면 Python 3.10 이상을 찾고, 저장소 안의 `.venv-runtime` 가상환경에 라이브러리를 설치한 뒤 실행합니다.
 
-파이썬이 없으면 설치 페이지를 열어 안내하고, 라이브러리가 없으면 자동으로 설치합니다.
+파이썬이 없으면 설치 페이지를 열어 안내하고, 라이브러리가 없으면 전역 Python 환경이 아니라 전용 가상환경에 자동으로 설치합니다.
 
 직접 실행할 수도 있습니다.
 
@@ -100,7 +100,7 @@ python desktop_overlay.py character.gif
 
 ### exe 직접 빌드
 
-`build.bat` 을 실행하면 릴리스와 같은 잠금 파일 기준으로 `dist\Desktop_Overlay_Start\Desktop_Overlay_Start.exe` 가 만들어집니다.
+`build.bat` 을 실행하면 `.venv-build` 빌드용 가상환경을 만들고, 릴리스와 같은 잠금 파일 기준으로 `dist\Desktop_Overlay_Start\Desktop_Overlay_Start.exe` 를 만듭니다.
 
 ```bat
 build.bat

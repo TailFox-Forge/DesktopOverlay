@@ -41,6 +41,27 @@ def test_source_documentation_requires_python_310():
     assert "Python 3.10 이상" in requirements
 
 
+def test_source_launcher_uses_dedicated_runtime_venv():
+    script = read_repo_text("Desktop_Overlay_Start.bat")
+
+    assert ".venv-runtime" in script
+    assert "-m venv" in script
+    assert "py -3" in script
+    assert "sys.version_info >= (3, 10)" in script
+    assert "where pythonw" not in script
+    assert "python -m pip install -r requirements.txt" not in script
+
+
+def test_build_script_uses_dedicated_build_venv():
+    script = read_repo_text("build.bat")
+
+    assert ".venv-build" in script
+    assert "-m venv" in script
+    assert "\"%VENV_PY%\" -m pip install -r" in script
+    assert "\"%VENV_PY%\" -m PyInstaller" in script
+    assert "python -m pip install -r requirements-release.txt" not in script
+
+
 @pytest.fixture(scope="session")
 def qapp():
     app = QtWidgets.QApplication.instance()
