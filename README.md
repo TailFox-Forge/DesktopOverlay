@@ -299,6 +299,11 @@ pytest
 
 ## 버전별 변경 내역
 
+### [v0.3.16](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.16)
+
+- 클릭 통과 기본값을 꺼짐으로 바꿔 최초 실행 후 바로 오버레이를 드래그해 위치를 조절할 수 있게 했습니다.
+- README와 요구사항 문서의 클릭 통과 기본 동작 설명을 실제 동작에 맞춰 갱신했습니다.
+
 ### [v0.3.15](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.15)
 
 - 소스 실행/빌드 배치의 Python 탐지 프로브가 실행 파일 경로를 출력하기 전에 종료되던 회귀를 수정했습니다.
