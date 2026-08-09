@@ -299,6 +299,11 @@ pytest
 
 ## 버전별 변경 내역
 
+### [v0.3.18](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.18)
+
+- 릴리스 재실행 시 `DisplayOverlay.zip`의 기존 SHA256과 새 빌드 SHA256이 같은 경우에만 릴리스 노트를 갱신할 수 있도록 테스트를 강화했습니다.
+- SHA256 불일치 오류 경로에서 `gh release edit`이 실행되지 않는 구조를 회귀 테스트로 고정했습니다.
+
 ### [v0.3.17](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.17)
 
 - 릴리스 재실행 시 기존 `DisplayOverlay.zip`과 새 빌드 zip의 SHA256이 다르면 릴리스 노트를 갱신하지 않고 실패하도록 보강했습니다.
