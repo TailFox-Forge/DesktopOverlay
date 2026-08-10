@@ -28,9 +28,9 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 APP_NAME = "DesktopOverlay"
 APP_VERSION = "0.3.20"
-REPOSITORY_URL = "https://github.com/TailFox-Forge/DesktopOverlay"
-RELEASES_LATEST_API = "https://api.github.com/repos/TailFox-Forge/DesktopOverlay/releases/latest"
-RELEASES_LATEST_URL = "https://github.com/TailFox-Forge/DesktopOverlay/releases/latest"
+REPOSITORY_URL = "https://github.com/SeoArin9142/DesktopOverlay"
+RELEASES_LATEST_API = "https://api.github.com/repos/SeoArin9142/DesktopOverlay/releases/latest"
+RELEASES_LATEST_URL = "https://github.com/SeoArin9142/DesktopOverlay/releases/latest"
 UPDATE_CHECK_TIMEOUT_SEC = 8
 UPDATE_RESPONSE_MAX_BYTES = 1_000_000
 STARTUP_COMMAND_TIMEOUT_SEC = 15
@@ -895,7 +895,7 @@ def safe_release_url(url):
     if (
             parsed.scheme == "https"
             and host in ("github.com", "www.github.com")
-            and path.startswith("/tailfox-forge/desktopoverlay/releases/")):
+            and path.startswith("/seoarin9142/desktopoverlay/releases/")):
         return str(url)
     return RELEASES_LATEST_URL
 

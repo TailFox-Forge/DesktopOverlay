@@ -1033,7 +1033,7 @@ def test_fetch_latest_release_sanitizes_untrusted_release_url(overlay_module, mo
 
 def test_safe_release_url_allows_project_release_urls(overlay_module):
     mod = overlay_module
-    url = "https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.5"
+    url = "https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.5"
 
     assert mod.safe_release_url(url) == url
 

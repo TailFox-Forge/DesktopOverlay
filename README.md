@@ -1,18 +1,18 @@
 # DesktopOverlay
 
-[![다운로드](https://img.shields.io/github/v/release/TailFox-Forge/DesktopOverlay?label=%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C&style=for-the-badge)](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)
-[![내려받은 횟수](https://img.shields.io/github/downloads/TailFox-Forge/DesktopOverlay/total?label=%EB%82%B4%EB%A0%A4%EB%B0%9B%EC%9D%80%20%ED%9A%9F%EC%88%98&style=for-the-badge)](https://github.com/TailFox-Forge/DesktopOverlay/releases)
-[![라이선스](https://img.shields.io/github/license/TailFox-Forge/DesktopOverlay?label=%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4&style=for-the-badge)](LICENSE)
+[![다운로드](https://img.shields.io/github/v/release/SeoArin9142/DesktopOverlay?label=%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C&style=for-the-badge)](https://github.com/SeoArin9142/DesktopOverlay/releases/latest)
+[![내려받은 횟수](https://img.shields.io/github/downloads/SeoArin9142/DesktopOverlay/total?label=%EB%82%B4%EB%A0%A4%EB%B0%9B%EC%9D%80%20%ED%9A%9F%EC%88%98&style=for-the-badge)](https://github.com/SeoArin9142/DesktopOverlay/releases)
+[![라이선스](https://img.shields.io/github/license/SeoArin9142/DesktopOverlay?label=%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4&style=for-the-badge)](LICENSE)
 
 어떤 이미지든 바탕화면 원하는 위치와 크기에 **배경 없이** 띄워두는 윈도우용 오버레이입니다.
 
-### ⬇ [DisplayOverlay.zip 내려받기](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest/download/DisplayOverlay.zip)
+### ⬇ [DisplayOverlay.zip 내려받기](https://github.com/SeoArin9142/DesktopOverlay/releases/latest/download/DisplayOverlay.zip)
 
 내려받아 압축을 푼 뒤 `Desktop_Overlay_Start.exe` 를 더블클릭하면 끝입니다.
 
 파이썬을 비롯한 어떤 설치 과정도 필요 없습니다.
 
-최신 버전과 파일 해시는 [릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 확인하세요.
+최신 버전과 파일 해시는 [릴리스 페이지](https://github.com/SeoArin9142/DesktopOverlay/releases/latest)에서 확인하세요.
 
 각 릴리스 zip의 SHA256은 해당 릴리스 노트에 적혀 있습니다.
 
@@ -67,7 +67,7 @@ GIF·PNG·JPG·WEBP·BMP를 테두리 없는 투명 창으로 항상 위에 표�
 
 ### 파이썬 없이 (권장)
 
-[릴리스 페이지](https://github.com/TailFox-Forge/DesktopOverlay/releases/latest)에서 `DisplayOverlay.zip` 을 내려받아 압축을 푼 뒤 `Desktop_Overlay_Start.exe` 를 더블클릭하면 됩니다.
+[릴리스 페이지](https://github.com/SeoArin9142/DesktopOverlay/releases/latest)에서 `DisplayOverlay.zip` 을 내려받아 압축을 푼 뒤 `Desktop_Overlay_Start.exe` 를 더블클릭하면 됩니다.
 
 설정은 기본적으로 exe 가 놓인 폴더에 `config.json` 으로 저장됩니다.
 
@@ -299,7 +299,7 @@ pytest
 
 ## 버전별 변경 내역
 
-### [v0.3.20](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.20)
+### [v0.3.20](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.20)
 
 - 소스 실행/빌드 배치가 기존 가상환경의 Python 3.10 이상 여부를 다시 검사하고, 소스 실행용 가상환경은 `requirements.txt` 해시가 바뀌면 의존성을 재설치합니다.
 - 손상되었거나 최상위 형식이 잘못된 `config.json`을 기본값으로 덮어쓰기 전에 `config.json.bad-...` 백업으로 보존하고, 트레이 알림에 백업 경로를 표시합니다.
@@ -313,22 +313,22 @@ pytest
 - `--only-binary=:all:` 설치 옵션을 YAML 한 줄 scalar에 그대로 넣어 workflow 파일 구문 오류가 발생했습니다.
 - 실제 배포는 `v0.3.20`에 통합됐습니다.
 
-### [v0.3.18](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.18)
+### [v0.3.18](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.18)
 
 - 릴리스 재실행 시 `DisplayOverlay.zip`의 기존 SHA256과 새 빌드 SHA256이 같은 경우에만 릴리스 노트를 갱신할 수 있도록 테스트를 강화했습니다.
 - SHA256 불일치 오류 경로에서 `gh release edit`이 실행되지 않는 구조를 회귀 테스트로 고정했습니다.
 
-### [v0.3.17](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.17)
+### [v0.3.17](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.17)
 
 - 릴리스 재실행 시 기존 `DisplayOverlay.zip`과 새 빌드 zip의 SHA256이 다르면 릴리스 노트를 갱신하지 않고 실패하도록 보강했습니다.
 - 기존 자산과 새 빌드 자산의 SHA256이 같을 때만 릴리스 노트를 갱신하고 업로드를 생략하도록 해, 릴리스 노트 해시와 실제 배포 파일 해시가 어긋나는 상황을 막았습니다.
 
-### [v0.3.16](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.16)
+### [v0.3.16](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.16)
 
 - 클릭 통과 기본값을 꺼짐으로 바꿔 최초 실행 후 바로 오버레이를 드래그해 위치를 조절할 수 있게 했습니다.
 - README와 요구사항 문서의 클릭 통과 기본 동작 설명을 실제 동작에 맞춰 갱신했습니다.
 
-### [v0.3.15](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.15)
+### [v0.3.15](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.15)
 
 - 소스 실행/빌드 배치의 Python 탐지 프로브가 실행 파일 경로를 출력하기 전에 종료되던 회귀를 수정했습니다.
 - `.venv-runtime`, `.venv-build`가 손상된 경우 자동으로 삭제 후 재생성하도록 보강했습니다.
@@ -337,7 +337,7 @@ pytest
 - 클릭 통과 Win32 확장 스타일 적용부에 `ctypes` 함수 시그니처와 예외 처리를 추가했습니다.
 - `pip --require-hashes`가 잘못된 해시를 실제로 거부하는지 확인하는 negative CI 테스트를 추가했습니다.
 
-### [v0.3.14](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.14)
+### [v0.3.14](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.14)
 
 - `v0.3.13` 릴리스 게시 실패 원인이던 Windows `pytest` 전이 의존성 `colorama`를 해시 lock에 명시했습니다.
 - `v0.3.12`, `v0.3.13`에서 준비한 이슈 #61~#67 수정 내용을 실제 배포본으로 통합했습니다.
@@ -366,13 +366,13 @@ pytest
 - 릴리스 publish job이 기존 `DisplayOverlay.zip` 자산을 덮어쓰지 않고, 자산이 이미 있으면 실패하도록 변경했습니다.
 - 런타임/릴리스 의존성 lock에 SHA256 해시를 추가하고 모든 설치 경로가 `--require-hashes`를 사용하도록 보강했습니다.
 
-### [v0.3.11](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.11)
+### [v0.3.11](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.11)
 
 - Windows 자동 실행 바로가기 처리에서 PowerShell 실행을 신뢰 가능한 절대 경로로만 제한했습니다.
 - System32 PowerShell 실행이 실패해도 `powershell.exe`/`powershell` PATH 검색으로 fallback하지 않도록 막았습니다.
 - #58 보안 하드닝 회귀 테스트를 추가했습니다.
 
-### [v0.3.10](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.10)
+### [v0.3.10](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.10)
 
 - Release workflow 게시 job이 checkout 없이도 저장소를 정확히 지정하도록 `gh release` 명령에 repository를 명시했습니다.
 - 릴리스 게시에 실패했던 `v0.3.8`, `v0.3.9` 태그의 이슈 #54~#60 수정 내용과 workflow 보강을 실제 배포본으로 통합했습니다.
@@ -397,19 +397,19 @@ pytest
 - Release workflow를 read-only 빌드 job과 `contents: write` 게시 job으로 분리했습니다.
 - 실제 배포는 `v0.3.10`에 통합됐습니다.
 
-### [v0.3.7](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.7)
+### [v0.3.7](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.7)
 
 - 배포 압축 파일명을 `DisplayOverlay.zip`으로 변경했습니다.
 - Windows x64 전용 배포라 파일명에서 플랫폼 접미사를 제거했습니다.
 - 내부 실행 파일명 `Desktop_Overlay_Start.exe`는 그대로 유지합니다.
 
-### [v0.3.6](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.6)
+### [v0.3.6](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.6)
 
 - 이미지가 없는 최초 실행 때 사용자가 프로그램 실행 여부를 알 수 있도록 주 모니터 중앙에 안내창을 띄웁니다.
 - 안내창에서 바로 **이미지 열기** 를 선택할 수 있습니다.
 - 최초 안내창은 한 번만 표시되며, 이후에는 기존 트레이 알림 흐름을 유지합니다.
 
-### [v0.3.5](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.5)
+### [v0.3.5](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.5)
 
 - 네트워크 공유 경로 이미지를 저장 경로 또는 실행 인자로 사용할 때 UI 스레드에서 `exists` 검사를 하지 않도록 통일했습니다.
 - 실행 인자 경로가 없고 저장된 네트워크 이미지가 있을 때 저장된 이미지를 정상 복원하도록 수정했습니다.
@@ -422,7 +422,7 @@ pytest
 - Defender 오탐 가능성을 낮추기 위해 릴리스 배포물을 PyInstaller onefile exe에서 onedir zip으로 변경했습니다.
 - 회귀 테스트를 보강해 네트워크 경로, 예약 단축키, 이미지 경로 보존, 자동 배경 복귀, 픽셀 상한, startup worker 상태 전이를 확인합니다.
 
-### [v0.3.4](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.4)
+### [v0.3.4](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.4)
 
 - 단축키 설정창의 캡처 UI도 `config.json` 정규화와 같은 예약 조합 판정을 사용합니다.
 - `Ctrl+Tab`, `Ctrl+Shift+Tab`을 설정창에서도 등록할 수 있게 했습니다.
@@ -430,7 +430,7 @@ pytest
 - 수식어 없는 `Esc`의 캡처 취소 동작은 유지했습니다.
 - 캡처 UI 전용 회귀 테스트를 추가했습니다.
 
-### [v0.3.3](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.3)
+### [v0.3.3](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.3)
 
 - 단독 `Esc`, `Tab`, `Backspace`, `Delete`는 계속 거부하되 수식어가 붙은 정상 조합은 허용합니다.
 - `Ctrl+Delete`, `Ctrl+Backspace`, `Ctrl+Tab`, `Ctrl+Shift+Delete` 같은 조합을 등록할 수 있게 했습니다.
@@ -438,7 +438,7 @@ pytest
 - 단축키 캡처 UI에서 `Backspace`/`Delete` 삭제 동작은 수식어 없는 입력에만 적용합니다.
 - 예약/허용 단축키 조합에 대한 회귀 테스트를 추가했습니다.
 
-### [v0.3.2](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.2)
+### [v0.3.2](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.2)
 
 - `config.json`에 직접 입력된 전역 단축키도 설정창과 같은 안전 규칙으로 검증합니다.
 - `Space`, `Enter`, `F1` 같은 수식어 없는 단독키는 시작 시 제거하고, `Num0`~`Num9` 단독키만 유지합니다.
@@ -446,7 +446,7 @@ pytest
 - 프리릴리스 태그를 자동 업데이트 대상으로 안내하지 않도록 업데이트 판정을 보강했습니다.
 - 설정 파일 직접 편집 경로에 대한 회귀 테스트를 추가했습니다.
 
-### [v0.3.1](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.1)
+### [v0.3.1](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.1)
 
 - 손상된 `config.json` 값을 안전하게 보정하고, 잘못된 설정은 트레이 알림으로 안내합니다.
 - 설정 저장을 임시 파일 작성 후 원자 교체 방식으로 바꾸고, 휠 크기 조절 중 중복 저장을 줄이도록 지연 저장을 적용했습니다.
@@ -456,14 +456,14 @@ pytest
 - 전역 단축키 정책을 강화해 수식어 없는 단독키는 막고 `Num0`~`Num9` 단독키만 예외로 허용합니다.
 - CI를 Ubuntu/Windows matrix로 확장했습니다.
 
-### [v0.3.0](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.3.0)
+### [v0.3.0](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.3.0)
 
 - 트레이 메뉴에 **윈도우 시작 시 자동 실행** 체크 항목을 추가했습니다.
 - 레지스트리를 쓰지 않고 Windows 시작프로그램 폴더의 `DesktopOverlay.lnk` 바로가기를 생성/삭제합니다.
 - 프로그램 파일이나 폴더를 옮긴 뒤 **자동 실행 경로 갱신** 메뉴로 현재 실행 위치를 다시 등록할 수 있게 했습니다.
 - README에 자동 실행 동작 방식과 최신 다운로드 SHA256을 반영했습니다.
 
-### [v0.2.3](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.2.3)
+### [v0.2.3](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.2.3)
 
 - 단축키 설정창을 크게 조정해 주요 항목을 스크롤 없이 볼 수 있게 했습니다.
 - 단축키 등록 중 기존 전역 단축키가 먼저 실행되어 입력을 빼앗는 문제를 수정했습니다.
@@ -471,7 +471,7 @@ pytest
 - 넘버패드 숫자(`Num0`~`Num9`)를 일반 숫자와 분리해 단독 등록할 수 있게 했습니다.
 - README의 최신 다운로드 링크와 SHA256 값을 v0.2.3 기준으로 갱신했습니다.
 
-### [v0.2.2](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.2.2)
+### [v0.2.2](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.2.2)
 
 - 대형 GIF가 UI와 메모리를 과도하게 잡지 않도록 프레임 수/픽셀 예산 제한을 추가했습니다.
 - 제한을 넘는 GIF는 전체 재생 시간을 유지하면서 프레임을 균등 샘플링합니다.
@@ -481,13 +481,13 @@ pytest
 - 중복 키, 불가능한 키, 토글/개별 보이기·숨기기 단축키 충돌을 안내합니다.
 - 단축키 전체 비활성화 키와 트레이 메뉴의 단축키 활성화/비활성화 기능을 추가했습니다.
 
-### [v0.2.1](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.2.1)
+### [v0.2.1](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.2.1)
 
 - 트레이 메뉴에 **업데이트 확인**을 추가했습니다.
 - 새 GitHub 릴리스가 있으면 트레이 아이콘 우상단에 빨간점을 표시합니다.
 - README에 v0.2.1 기준 다운로드 링크, SHA256, 최소/권장 사양 정보를 반영했습니다.
 
-### [v0.2.0](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.2.0)
+### [v0.2.0](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.2.0)
 
 - 대형 이미지/GIF 처리 중 UI 멈춤을 줄이도록 이미지 처리를 백그라운드 worker로 옮겼습니다.
 - 위치 바로가기로 보낸 구석을 기억하고, 이미지나 크기가 바뀌어도 같은 구석에 다시 붙도록 했습니다.
@@ -496,7 +496,7 @@ pytest
 - 설정 저장 fallback, 소스 실행 배치 파일, 테스트/빌드 재현성을 보강했습니다.
 - 릴리즈 자동화와 CI 테스트 import 경로를 정리했습니다.
 
-### [v0.1.0](https://github.com/TailFox-Forge/DesktopOverlay/releases/tag/v0.1.0)
+### [v0.1.0](https://github.com/SeoArin9142/DesktopOverlay/releases/tag/v0.1.0)
 
 - 첫 공개 배포입니다.
 - GIF, PNG, JPG, WEBP, BMP 이미지를 프레임 없는 투명 오버레이 창으로 표시합니다.
